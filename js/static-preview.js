@@ -173,9 +173,19 @@
       status.classList.remove("error");
       status.classList.add("ok");
     }
+    window.setTimeout(() => {
+      if (!status) return;
+      status.textContent = "화면 점검용";
+      status.classList.remove("error");
+      status.classList.add("ok");
+    }, 300);
   }
 
   function explainUnavailableAction(event) {
+    if (event.target.closest("#btn-show-feasibility")) {
+      window.setTimeout(() => setNoticeMessage("샘플 데이터로 01 대상지부터 04 종합의견까지 화면을 점검할 수 있습니다."), 0);
+      return;
+    }
     const blocked = event.target.closest("#search-button, #btn-area-select-start");
     if (!blocked) return;
     event.preventDefault();
