@@ -115,6 +115,9 @@
         geometry: mergedParcelResult.geometry,
         dataset: "화면 점검용 샘플",
       });
+      if (typeof el !== "undefined" && el.realParcelNote) {
+        el.realParcelNote.textContent = "※ 공개 점검 URL의 화면 이동을 위한 샘플 데이터입니다. 실제 대상지 판정값이 아닙니다.";
+      }
       renderMultiParcelOverlay();
       updateMultiParcelUI();
       setNoticeMessage("샘플 대상지 3필지를 선택했습니다. 화면의 ‘개발가능성 분석’을 눌러 다음 단계로 이동하세요.");
