@@ -169,16 +169,14 @@
 
     const status = document.getElementById("server-status");
     if (status) {
-      status.textContent = "화면 점검용";
-      status.classList.remove("error");
-      status.classList.add("ok");
+      const paintPreviewStatus = () => {
+        if (status.textContent !== "화면 점검용") status.textContent = "화면 점검용";
+        status.classList.remove("error");
+        status.classList.add("ok");
+      };
+      paintPreviewStatus();
+      new MutationObserver(paintPreviewStatus).observe(status, { childList: true, attributes: true });
     }
-    window.setTimeout(() => {
-      if (!status) return;
-      status.textContent = "화면 점검용";
-      status.classList.remove("error");
-      status.classList.add("ok");
-    }, 300);
   }
 
   function explainUnavailableAction(event) {
