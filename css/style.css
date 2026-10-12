@@ -1,0 +1,2300 @@
+:root {
+  --color-primary: #2c3e50;
+  --color-accent: #2980b9;
+  --color-selected: #e74c3c;
+  --color-bg-panel: #f7f9fb;
+  --color-border: #dfe6e9;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+  color: #2d3436;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background-color: var(--color-primary);
+  color: #fff;
+  height: 56px;
+}
+
+/* ⚠️ [hidden] 속성만으로는 안 가려집니다 — 위 .app-header{display:flex}가 브라우저
+   기본 [hidden]{display:none}보다 우선순위가 높아서(작성자 스타일시트가 항상
+   이김) 그대로 두면 계속 보입니다. 그래서 명시적으로 다시 덮어씁니다. */
+.app-header[hidden] {
+  display: none;
+}
+
+/* 2026-09-10: 전체 UI 개편 — 지도가 항상 전체화면을 채우는 떠 있는 카드 방식으로 전환.
+   접기 버튼은 카드 "안"에 두면 카드를 접었을 때 버튼도 같이 사라져서 다시 펼 방법이
+   없어지므로, 카드 밖(항상 보이는 자리)에 고정해둡니다. */
+.floating-toggle-btn {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 1210; /* 카드(1190~1200)보다 항상 위 */
+}
+
+.floating-toggle-btn-right {
+  left: 336px; /* 왼쪽 카드(300px) + 여백 */
+}
+
+.floating-server-status {
+  position: fixed;
+  top: 13px;
+  left: 46px;
+  z-index: 1210;
+}
+
+.app-header h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.panel-toggle-btn {
+  background: rgba(44, 62, 80, 0.06);
+  border: 1px solid var(--color-border);
+  color: var(--color-primary);
+  border-radius: 6px;
+  width: 26px;
+  height: 26px;
+  font-size: 13px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.panel-toggle-btn:hover {
+  background: rgba(44, 62, 80, 0.14);
+}
+
+.panel-toggle-btn-right {
+  margin-left: 8px;
+}
+
+.stage-badge {
+  font-size: 12px;
+  padding: 3px 8px;
+  background-color: var(--color-accent);
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
+.server-status {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  background-color: #636e72;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.server-status.ok {
+  background-color: #27ae60;
+}
+
+.server-status.error {
+  background-color: #c0392b;
+}
+
+/* ------------------------------------------------------------ */
+/* 왼쪽(대상지 선택+분석 메뉴) / 중앙(지도) / 오른쪽(결과) 3분할 레이아웃      */
+/* ------------------------------------------------------------ */
+
+.app-body {
+  display: flex;
+  height: 100vh;
+  min-height: 0;
+}
+
+/* 2026-09-10: 전체 UI 개편 — 좌/우 패널이 화면 폭을 나눠 갖던 고정 사이드바에서,
+   지도 위에 떠 있는 카드로 바뀌었습니다(요청사항: "양옆에 위치하는 메뉴패널과
+   결과패널 없애줘"). position:fixed라 .app-body의 flex 흐름에서 빠지므로,
+   .map-container가 항상 화면 전체를 채웁니다. */
+.left-panel {
+  position: fixed;
+  top: 46px; /* 위에 항상 떠 있는 접기 버튼(.floating-toggle-btn) 자리를 남겨둠 */
+  left: 12px;
+  z-index: 1200;
+  width: 300px;
+  max-width: calc(100vw - 24px);
+  background-color: rgba(255, 255, 255, 0.97);
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.left-panel.collapsed {
+  display: none;
+}
+
+.left-panel-scroll {
+  width: 100%;
+  max-height: calc(100vh - 58px);
+  overflow-y: auto;
+  padding: 10px 12px;
+}
+
+.left-section {
+  margin-bottom: 18px;
+}
+
+.left-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #7f8c8d;
+  margin: 0 0 8px 0;
+}
+
+.left-flow-hint {
+  font-size: 12px;
+  color: #636e72;
+  margin: 0 0 8px 0;
+  line-height: 1.4;
+}
+
+.left-clear-btn {
+  border: none;
+  background: none;
+  color: #c0392b;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 4px;
+  white-space: nowrap;
+}
+
+.left-clear-btn:hover {
+  text-decoration: underline;
+}
+
+/* 분석 메뉴(왼쪽 세로 목록) */
+.analysis-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 13px;
+  color: #2d3436;
+  cursor: pointer;
+}
+
+.menu-item:hover:not(:disabled) {
+  background: rgba(41, 128, 185, 0.08);
+}
+
+.menu-item.active {
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 700;
+}
+
+.menu-item:disabled {
+  color: #b2bec3;
+  cursor: not-allowed;
+}
+
+.menu-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-item-badge {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.menu-item-badge[data-status="loading"] {
+  background: #f39c12;
+  animation: menu-badge-pulse 1s infinite ease-in-out;
+}
+
+.menu-item-badge[data-status="done"] {
+  background: #27ae60;
+}
+
+.menu-item-badge[data-status="error"] {
+  background: #c0392b;
+}
+
+.menu-item-badge[data-status="empty"] {
+  background: #b2bec3;
+}
+
+@keyframes menu-badge-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* 왼쪽 패널 안 "지도 표시 설정"은 접이식(details/summary)으로 항상 숨겨둠 */
+.collapsible-settings {
+  font-size: 12px;
+}
+
+.collapsible-settings summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  color: #7f8c8d;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 4px 0;
+}
+
+.collapsible-settings[open] summary {
+  margin-bottom: 8px;
+}
+
+.analysis-sub-settings {
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+.analysis-sub-settings summary {
+  cursor: pointer;
+  color: var(--color-accent);
+  font-size: 12px;
+}
+
+/* 지도 컨테이너 — 항상 전체 화면 (좌/우 카드는 그 위에 떠 있음) */
+.map-container {
+  position: relative;
+  flex: 1 1 100%;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+}
+
+#map {
+  width: 100%;
+  height: 100%;
+}
+
+/* 오른쪽 결과 패널 — 검색 카드 옆에 나란히 떠 있는 카드 */
+.right-panel {
+  position: fixed;
+  top: 46px; /* 위에 항상 떠 있는 접기 버튼(.floating-toggle-btn-right) 자리를 남겨둠 */
+  left: 324px; /* 좌측 카드(300px) + 여백 12px + 여백 12px */
+  z-index: 1190;
+  width: 320px;
+  max-width: calc(100vw - 336px);
+  background-color: rgba(255, 255, 255, 0.97);
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.right-panel.collapsed {
+  display: none;
+}
+
+.right-panel-scroll {
+  width: 100%;
+  max-height: calc(100vh - 58px);
+  overflow-y: auto;
+  padding: 10px 12px;
+}
+
+.right-panel-empty-hint {
+  text-align: center;
+  color: #b2bec3;
+  font-size: 13px;
+  margin-top: 40px;
+}
+
+.right-panel-scroll.has-selection .right-panel-empty-hint {
+  display: none;
+}
+
+.result-section {
+  padding-bottom: 8px;
+}
+
+.result-section h2 {
+  font-size: 15px;
+  margin: 0 0 12px 0;
+  color: var(--color-primary);
+}
+
+.panel-card {
+  background-color: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+
+.panel-card h2 {
+  font-size: 14px;
+  margin: 0 0 10px 0;
+  color: var(--color-primary);
+}
+
+.info-panel dl {
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  row-gap: 6px;
+  column-gap: 8px;
+  margin: 0;
+  font-size: 13px;
+}
+
+/* ⚠️ [hidden] 속성만으로는 안 가려짐 — 위 .info-panel dl{display:grid}가 브라우저
+   기본 [hidden]{display:none}보다 우선순위가 높아서, 3개의 dl(필지 클릭/검색결과/
+   실제 필지) 중 hidden이 붙은 것도 계속 그리드로 보였던 기존 버그. "주소/면적만
+   남기고 나머지 삭제" 작업으로 내용이 단순해지면서 중복 표시가 눈에 띄게 드러나
+   발견함(.app-header[hidden]과 동일한 패턴 — 명시적으로 다시 덮어써야 함). */
+.info-panel dl[hidden] {
+  display: none;
+}
+
+.info-panel dt {
+  color: #636e72;
+}
+
+.info-panel dd {
+  margin: 0;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.empty-message {
+  font-size: 13px;
+  color: #b2bec3;
+  margin: 0 0 10px 0;
+}
+
+.panel-hint {
+  font-size: 12px;
+  color: #636e72;
+  margin: 0 0 10px 0;
+}
+
+.search-note {
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+
+.radius-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.radius-btn {
+  flex: 1;
+  padding: 8px 6px;
+  font-size: 13px;
+  border: 1px solid var(--color-accent);
+  background-color: #fff;
+  color: var(--color-accent);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.radius-btn:hover {
+  background-color: #eaf2fa;
+}
+
+.radius-btn.active {
+  background-color: var(--color-accent);
+  color: #fff;
+}
+
+.note-card {
+  font-size: 12px;
+  color: #636e72;
+  background-color: #fffbea;
+  border-color: #f1c40f;
+}
+
+/* ------------------------------------------------------------ */
+/* 2단계: 주소 검색 패널 (지도 위에 떠 있는 오버레이 박스)          */
+/* ------------------------------------------------------------ */
+
+.search-panel {
+  width: 100%;
+  background-color: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 4px;
+}
+
+.search-input-row {
+  display: flex;
+  gap: 6px;
+}
+
+#search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+#search-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.search-btn {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  font-size: 13px;
+  background-color: var(--color-accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.search-btn:hover {
+  background-color: #2471a3;
+}
+
+.search-btn:disabled {
+  background-color: #95a5a6;
+  cursor: not-allowed;
+}
+
+.search-status {
+  margin-top: 8px;
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.search-status.loading {
+  background-color: #eaf2fa;
+  color: var(--color-accent);
+}
+
+.search-status.error {
+  background-color: #fdecea;
+  color: #c0392b;
+}
+
+.search-status.empty {
+  background-color: #f4f4f4;
+  color: #636e72;
+}
+
+.search-results {
+  list-style: none;
+  margin: 8px 0 0 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  border-top: 1px solid var(--color-border);
+}
+
+.search-result-item {
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--color-border);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.search-result-item:hover {
+  background-color: #eaf2fa;
+}
+
+.search-result-title {
+  font-weight: 600;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.search-result-type {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background-color: var(--color-accent);
+  color: #fff;
+  white-space: nowrap;
+}
+
+.search-result-sub {
+  color: #636e72;
+  margin-top: 2px;
+}
+
+.search-reset-btn {
+  margin-top: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 12px;
+  background-color: #fff;
+  color: #c0392b;
+  border: 1px solid #c0392b;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.search-reset-btn:hover {
+  background-color: #fdecea;
+}
+
+/* ------------------------------------------------------------ */
+/* 4단계: 주변 건축물 분석 패널                                       */
+/* ------------------------------------------------------------ */
+
+.building-analysis-btn {
+  width: 100%;
+  margin-bottom: 8px;
+  background-color: var(--color-accent);
+  color: #fff;
+}
+
+.building-analysis-btn:disabled {
+  background-color: #dfe6e9;
+  color: #b2bec3;
+  border-color: #dfe6e9;
+  cursor: not-allowed;
+}
+
+.building-analysis-btn:not(:disabled):hover {
+  background-color: #2471a3;
+}
+
+.building-layer-switch {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.layer-toggle-btn {
+  flex: 1;
+  padding: 6px 8px;
+  font-size: 12px;
+  border: 1px solid var(--color-border);
+  background-color: #fff;
+  color: #2d3436;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.layer-toggle-btn.active {
+  background-color: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+.layer-toggle-btn:disabled {
+  color: #b2bec3;
+  cursor: not-allowed;
+}
+
+.building-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+.building-summary dl {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  row-gap: 6px;
+  column-gap: 8px;
+  margin: 0 0 8px 0;
+  font-size: 12px;
+}
+
+.building-summary dt {
+  color: #636e72;
+}
+
+.building-summary dd {
+  margin: 0;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.building-disclaimer {
+  background-color: #fffbea;
+  border: 1px solid #f1c40f;
+  border-radius: 6px;
+  padding: 8px;
+  margin-top: 8px !important;
+}
+
+#building-detail-card dl {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  row-gap: 6px;
+  column-gap: 8px;
+  margin: 0;
+  font-size: 12px;
+}
+
+#building-detail-card dt {
+  color: #636e72;
+}
+
+#building-detail-card dd {
+  margin: 0;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+/* Leaflet 건물 툴팁 */
+.building-tooltip {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* ------------------------------------------------------------ */
+/* 5단계: 저층·노후·저밀 조건 검색 필터                                */
+/* ------------------------------------------------------------ */
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.filter-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 56px;
+}
+
+.filter-select,
+.filter-number {
+  font-size: 12px;
+  padding: 4px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
+.filter-number {
+  width: 80px;
+}
+
+.filter-unit {
+  color: #636e72;
+}
+
+.filter-mode-row {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  margin: 8px 0;
+}
+
+/* 층수/높이/연면적/건폐율/용적률 버튼이 늘어나 두 줄로 배치될 수 있도록 */
+.building-layer-switch {
+  flex-wrap: wrap;
+}
+
+/* 필터에 부합하는 건물 강조용 (지도 레이어 스타일은 JS에서 직접 지정하지만,
+   범례/보조 표기에 재사용할 수 있도록 색상만 여기 참고용으로 남겨둠) */
+.filter-highlight-note {
+  font-size: 11px;
+  color: #636e72;
+}
+
+/* ------------------------------------------------------------ */
+/* 6.2단계: 대상지 접도·진입·경계 분석                                 */
+/* ------------------------------------------------------------ */
+
+.boundary-entrance-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.boundary-entrance-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #f8f9fa;
+}
+
+.boundary-entrance-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.boundary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.boundary-item {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.boundary-item-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.boundary-item-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.boundary-item-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #eee;
+  color: #555;
+}
+
+.boundary-item-badge.open {
+  background: #d4f7e1;
+  color: #1e8449;
+}
+
+.boundary-item-badge.closed {
+  background: #eee;
+  color: #777;
+}
+
+.boundary-item-detail {
+  color: #555;
+  margin-bottom: 4px;
+}
+
+.boundary-item-sentence {
+  font-style: italic;
+  color: #34495e;
+}
+
+/* ------------------------------------------------------------ */
+/* 7.1단계: 방위·일조·주변 건물 그림자 분석                             */
+/* ------------------------------------------------------------ */
+
+.shadow-time-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.shadow-time-controls select {
+  flex: 1;
+  font-size: 12px;
+  padding: 4px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+}
+
+.shadow-north-indicator {
+  position: absolute;
+  top: 70px;
+  right: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #c0392b;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  z-index: 500;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------ */
+/* 사용성 개선: 지도 레이어 ON/OFF 패널                                  */
+/* ------------------------------------------------------------ */
+
+.layer-checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.layer-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  padding: 3px 4px;
+  border-radius: 4px;
+}
+
+.layer-checkbox-item:hover {
+  background: #f5f5f5;
+}
+
+.layer-checkbox-item input[type="checkbox"] {
+  cursor: pointer;
+}
+
+.layer-checkbox-item label {
+  cursor: pointer;
+  flex: 1;
+}
+
+.layer-checkbox-item.disabled label {
+  color: #aaa;
+}
+
+.layer-checkbox-item .layer-group-badge {
+  font-size: 9px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: #eee;
+  color: #888;
+}
+
+.layer-group-heading {
+  font-size: 10px;
+  font-weight: 700;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin: 8px 0 2px;
+  padding-top: 4px;
+  border-top: 1px solid #eee;
+}
+
+.layer-group-heading:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+/* ------------------------------------------------------------ */
+/* 8.3단계(UI): 지도 표현·발표 모드·이미지 내보내기                       */
+/* ------------------------------------------------------------ */
+
+.map-display-toolbar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1000;
+  display: flex;
+  gap: 6px;
+}
+
+/* ⚠️ [hidden] 속성만으로는 안 가려짐 — 위 display:flex가 브라우저 기본
+   [hidden]{display:none}보다 우선순위가 높음(.app-header[hidden]과 동일한
+   패턴). STEP2 개발검토 Workspace에서 이 툴바 전체를 hidden으로 숨길 때
+   실제로 이 문제가 드러나 발견함 — 명시적으로 다시 덮어씁니다. */
+.map-display-toolbar[hidden] {
+  display: none;
+}
+
+.map-toolbar-btn {
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.map-toolbar-btn:hover {
+  background: #f5f5f5;
+}
+
+.map-toolbar-btn.active {
+  background: #2980b9;
+  color: #fff;
+  border-color: #2980b9;
+}
+
+/* 범례(지도 위 오버레이) */
+.map-legend-overlay {
+  position: absolute;
+  z-index: 999;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 11px;
+  max-width: 220px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+.map-legend-overlay[data-position="bottom-left"] {
+  left: 10px;
+  bottom: 10px;
+}
+
+.map-legend-overlay[data-position="bottom-right"] {
+  right: 10px;
+  bottom: 10px;
+}
+
+.map-legend-overlay-title {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+/* 8.6단계: 구역 그리기 꼭짓점(드래그로 위치 조정 가능) */
+.area-select-vertex {
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border: 2px solid #e67e22;
+  border-radius: 50%;
+  cursor: move;
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.4);
+}
+
+/* 8.6단계: 구역 그리기 안내 */
+.area-select-hint {
+  position: absolute;
+  top: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  background: rgba(44, 62, 80, 0.92);
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  max-width: 480px;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+/* 8.4단계: 지적편집도(용도지역) 범례.
+   2026-09-10: 왼쪽 위에 검색 카드가 새로 생겨서 겹치지 않게 오른쪽 위 툴바 밑으로 옮김. */
+.zoning-legend {
+  position: absolute;
+  right: 10px;
+  top: 50px;
+  z-index: 999;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 11px;
+  max-width: 200px;
+  max-height: 60vh;
+  overflow-y: auto;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+.zoning-legend-title {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.zoning-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 0;
+}
+
+.zoning-legend-swatch {
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.zoning-legend-note {
+  margin-top: 6px;
+  padding-top: 4px;
+  border-top: 1px solid #eee;
+  color: #888;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+/* 8.5단계: 줌 레벨별 행정구역(구/동) 이름 라벨 — Leaflet permanent tooltip */
+.admin-boundary-label {
+  background: none;
+  border: none;
+  box-shadow: none;
+  color: #2d3436;
+  font-weight: 700;
+  text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff;
+  pointer-events: none;
+}
+
+.admin-boundary-label::before {
+  display: none; /* Leaflet 툴팁 기본 화살표 제거 */
+}
+
+.admin-boundary-label-sigg {
+  font-size: 14px;
+}
+
+.admin-boundary-label-emd {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* 8.5단계: 지하철역 이름 라벨(항상 표시) — 역 마커가 보이는 스케일이면 이름도 항상 보임 */
+.subway-station-label {
+  background: none;
+  border: none;
+  box-shadow: none;
+  color: #2d3436;
+  font-size: 11px;
+  font-weight: 600;
+  text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff;
+  pointer-events: none;
+}
+
+.subway-station-label::before {
+  display: none;
+}
+
+/* 방위표 */
+.map-north-arrow {
+  position: absolute;
+  top: 55px;
+  right: 10px;
+  z-index: 999;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* 출처 표기 (지도 제공자 저작권 표기는 항상 유지 — 삭제하지 않고 작게) */
+.map-source-note {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  z-index: 999;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 9px;
+  color: #555;
+}
+
+/* 발표 모드 제목 */
+.presentation-title {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 999;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 6px 16px;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* 발표 모드: 분석용 UI 전부 숨김, 지도만 크게 */
+body.presentation-mode .app-header,
+body.presentation-mode .left-panel,
+body.presentation-mode .right-panel,
+body.presentation-mode .ui-only {
+  display: none !important;
+}
+
+body.presentation-mode .app-body {
+  height: 100vh;
+}
+
+body.presentation-mode .map-container {
+  width: 100vw;
+}
+
+/* 배경지도 선택 옵션 */
+.basemap-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.basemap-options label {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+#legend-position-select,
+#export-ratio-select {
+  width: 100%;
+  padding: 4px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+/* PNG 내보내기 시 임시로 지정 비율 크기로 지도 컨테이너를 조절할 때 사용하는 클래스 */
+.map-container.export-sizing {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 5000;
+  background: #fff;
+}
+
+.map-legend-section {
+  margin-bottom: 6px;
+}
+
+.map-legend-section strong {
+  display: block;
+  font-size: 10px;
+  margin-bottom: 2px;
+  color: #333;
+}
+
+/* ------------------------------------------------------------ */
+/* 반응형: 좁은 화면에서는 카드 폭을 줄이고, 옆에 나란히 두지 않고 위아래로 쌓음     */
+/* ------------------------------------------------------------ */
+
+/* 태블릿 정도: 두 카드를 나란히 둘 만큼 넓지 않으면 오른쪽 카드를 아래로 내림 */
+@media (max-width: 900px) {
+  .right-panel {
+    left: 12px;
+    top: auto;
+    bottom: 12px;
+    max-width: calc(100vw - 24px);
+  }
+
+  .right-panel-scroll {
+    max-height: 40vh;
+  }
+
+  .left-panel-scroll {
+    max-height: 45vh;
+  }
+}
+
+/* 휴대폰 정도: 카드가 화면 폭을 거의 채우도록 */
+@media (max-width: 520px) {
+  .left-panel,
+  .right-panel {
+    width: calc(100vw - 24px);
+  }
+}
+
+/* ------------------------------------------------------------ */
+/* 지하철역 노선색·환승 분할 SVG 마커                                     */
+/* ------------------------------------------------------------ */
+
+.subway-svg-icon {
+  background: transparent;
+  border: none;
+}
+
+.subway-svg-icon svg {
+  display: block;
+}
+
+/* 역 이름 상시 라벨(마커 오른쪽, 인터랙션 없음) */
+.subway-name-label-icon {
+  background: transparent;
+  border: none;
+  pointer-events: none;
+}
+
+.subway-name-label-text {
+  display: inline-block;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  color: #2d3436;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 0 3px;
+  border-radius: 3px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+/* ------------------------------------------------------------ */
+/* 다중 필지 선택 UI                                                   */
+/* ------------------------------------------------------------ */
+
+/* "대상지 기본정보"(.right-panel)와 완전히 분리된 독립 카드. 왼쪽 카드(검색/사업성)는
+   내용에 따라 키가 화면 거의 전체까지 늘어날 수 있어서 왼쪽에 두면 겹치므로,
+   오른쪽 카드(.right-panel) 바로 아래에 둡니다 — 오른쪽 카드는 이제 주소/면적
+   두 줄만 있어 항상 짧습니다. 정확한 top/left는 JS(_positionMultiParcelPanel)가
+   .right-panel의 실제 위치/높이를 읽어서 매번 맞춰주고, 아래 값은 JS 실행 전
+   깜빡임 방지용 기본값입니다. 태블릿/모바일(≤900px)에서는 다른 카드들처럼
+   화면 아래로 내려가 쌓입니다. */
+.multi-parcel-panel {
+  position: fixed;
+  left: 324px;
+  top: 200px;
+  z-index: 1195;
+  width: 320px;
+  max-width: calc(100vw - 336px);
+  max-height: calc(100vh - 212px);
+  overflow-y: auto;
+  margin: 0;
+  padding: 12px;
+  background: #fffbea;
+  border: 1px solid #f1c40f;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .multi-parcel-panel {
+    left: 12px;
+    top: auto;
+    bottom: 12px;
+    width: auto;
+    max-width: calc(100vw - 24px);
+    max-height: 35vh;
+  }
+}
+
+.multi-parcel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.multi-parcel-summary {
+  margin: 6px 0;
+  font-size: 12px;
+}
+
+.multi-parcel-summary dt {
+  color: #7f8c8d;
+  display: inline;
+}
+
+.multi-parcel-summary dd {
+  display: inline;
+  margin: 0 0 0 4px;
+  font-weight: 700;
+}
+
+.multi-parcel-list {
+  list-style: none;
+  margin: 6px 0 0 0;
+  padding: 0;
+  max-height: 160px;
+  overflow-y: auto;
+  border-top: 1px solid #f1e5a0;
+}
+
+.multi-parcel-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 2px;
+  border-bottom: 1px solid #f1e5a0;
+  font-size: 12px;
+}
+
+.multi-parcel-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+}
+
+.multi-parcel-item-delete {
+  border: none;
+  background: none;
+  color: #c0392b;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+  flex-shrink: 0;
+}
+
+.multi-parcel-item-delete:hover {
+  text-decoration: underline;
+}
+
+.fs-open-btn {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.fs-open-btn:hover {
+  background: #2471a3;
+}
+
+/* ------------------------------------------------------------ */
+/* 8.8단계: 사업성 및 사업내용 — STEP2 개발검토 Workspace 탭 안에 위치        */
+/* (예전에 여기 있던 독립 떠 있는 카드 .feasibility-card는 UI 개편으로 삭제 — */
+/*  이제 .dev-workspace 안 탭 패널이 이 내용을 담습니다. 아래 스타일은 그      */
+/*  탭 패널 안의 블록/입력/결과 표시에 계속 그대로 쓰입니다.)                 */
+/* ------------------------------------------------------------ */
+
+.feasibility-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.feasibility-block {
+  margin: 14px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 12px;
+}
+
+.feasibility-block:last-child {
+  border-bottom: none;
+}
+
+.feasibility-block-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin: 0 0 8px 0;
+}
+
+.fs-sub-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #7f8c8d;
+  margin: 10px 0 6px 0;
+}
+
+.fs-advanced-details {
+  margin: 6px 0 10px 0;
+  font-size: 12px;
+}
+
+.fs-advanced-details summary {
+  cursor: pointer;
+  color: var(--color-accent);
+}
+
+.fs-advanced-details .fs-far-inputs {
+  margin-top: 8px;
+}
+
+.fs-manual-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  color: #b8860b;
+  background: #fff6dc;
+  border: 1px solid #f1c40f;
+  border-radius: 8px;
+  padding: 1px 6px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.feasibility-dl {
+  margin: 6px 0;
+  font-size: 12px;
+}
+
+.feasibility-dl dt {
+  color: #7f8c8d;
+  display: inline;
+}
+
+.feasibility-dl dd {
+  display: block;
+  margin: 0 0 6px 0;
+  font-weight: 700;
+}
+
+.fs-jibun-details {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.fs-jibun-details summary {
+  cursor: pointer;
+  color: var(--color-accent);
+}
+
+.fs-jibun-list {
+  list-style: none;
+  margin: 6px 0 0 0;
+  padding: 0;
+  max-height: 140px;
+  overflow-y: auto;
+  border-top: 1px solid var(--color-border);
+}
+
+.fs-jibun-list li {
+  padding: 3px 2px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.fs-jiga-toggle {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.fs-far-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.fs-far-inputs label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: #636e72;
+}
+
+.fs-far-inputs input[type="number"] {
+  width: 110px;
+  padding: 4px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  font-size: 12px;
+  text-align: right;
+}
+
+.fs-zone-note {
+  margin-top: -4px;
+  color: var(--color-accent);
+  font-style: italic;
+}
+
+.fs-summary-textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  background: var(--color-bg-panel);
+  color: #2d3436;
+}
+
+/* ------------------------------------------------------------ */
+/* UI 개편: STEP1 — 검색창 바로 아래 대상지 선택 도구 한 줄                    */
+/* ------------------------------------------------------------ */
+
+.select-tools-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.select-tool-btn {
+  flex: 1 1 auto;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--color-primary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.select-tool-btn:hover {
+  background: rgba(41, 128, 185, 0.08);
+}
+
+.select-tool-btn-primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
+.select-tool-btn-primary:hover {
+  background: #2471a3;
+}
+
+.select-tool-btn-danger {
+  color: #c0392b;
+  border-color: #f1c9c2;
+}
+
+.select-tool-btn-danger:hover {
+  background: #fdecea;
+}
+
+.select-tools-hint {
+  font-size: 11px;
+  color: #95a5a6;
+  margin: 6px 0 0 0;
+}
+
+/* ------------------------------------------------------------ */
+/* UI 개편: STEP2 — 개발검토 Workspace (대상지 선택 화면과 분리된 별도 화면)     */
+/* ------------------------------------------------------------ */
+
+.dev-workspace {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-panel);
+  font-size: 13px;
+}
+
+.dev-workspace[hidden] {
+  display: none;
+}
+
+.dev-workspace-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  background: var(--color-primary);
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.dev-workspace-back-btn {
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.dev-workspace-back-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.dev-workspace-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.dev-workspace-top {
+  display: flex;
+  flex-shrink: 0;
+  height: 300px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dev-workspace-map-slot {
+  flex: 1 1 55%;
+  min-width: 0;
+  position: relative;
+  background: #eef1f2;
+  border-right: 1px solid var(--color-border);
+}
+
+/* #map-container가 이 슬롯 안으로 옮겨와(JS: dev-workspace.js) 꽉 채웁니다. */
+.dev-workspace-map-slot .map-container {
+  position: absolute;
+  inset: 0;
+}
+
+.dev-workspace-summary {
+  flex: 0 0 300px;
+  background: #fff;
+  padding: 14px 18px;
+  overflow-y: auto;
+}
+
+.dev-workspace-summary-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #7f8c8d;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: 0 0 10px 0;
+}
+
+.dev-workspace-summary-dl {
+  margin: 0;
+}
+
+.dev-workspace-summary-dl dt {
+  color: #7f8c8d;
+  font-size: 12px;
+  margin-top: 10px;
+}
+
+.dev-workspace-summary-dl dt:first-child {
+  margin-top: 0;
+}
+
+.dev-workspace-summary-dl dd {
+  margin: 2px 0 0 0;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--color-primary);
+}
+
+.dev-workspace-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 16px;
+  background: #fff;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+/* ⚠️ [hidden] 속성만으로는 안 가려짐 — 위 display:flex가 브라우저 기본
+   [hidden]{display:none}보다 우선순위가 높음(.app-header[hidden]과 동일한 패턴). */
+.dev-workspace-tabs[hidden] {
+  display: none;
+}
+
+.dev-tab-btn {
+  padding: 10px 14px;
+  border: none;
+  background: none;
+  font-size: 13px;
+  color: #636e72;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.dev-tab-btn:hover {
+  color: var(--color-primary);
+}
+
+.dev-tab-btn.active {
+  color: var(--color-accent);
+  font-weight: 700;
+  border-bottom-color: var(--color-accent);
+}
+
+.dev-workspace-content {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 18px 20px;
+}
+
+.dev-tab-panel {
+  max-width: 760px;
+}
+
+.dev-tab-placeholder {
+  color: #95a5a6;
+  font-size: 13px;
+  padding: 48px 0;
+  text-align: center;
+  border: 1px dashed var(--color-border);
+  border-radius: 6px;
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .dev-workspace-top {
+    flex-direction: column;
+    height: auto;
+  }
+
+  /* ⚠️ flex-direction이 row→column으로 바뀌면 flex-basis(기본 규칙의 "55%")가
+     주축(이제 세로)에 적용돼 부모 높이가 auto라 사실상 0에 가깝게 찌그러집니다
+     (실제로 겹쳐서 지도가 안 보이는 것으로 확인). flex 단축 속성 전체를 다시
+     지정해 flex-basis를 고정값으로 덮어써야 합니다. */
+  .dev-workspace-map-slot {
+    flex: 0 0 220px;
+    height: 220px;
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .dev-workspace-summary {
+    flex: 0 0 auto;
+  }
+}
+
+/* ------------------------------------------------------------ */
+/* UX 개편(2026-09-15): 개발가능성 요약 Dashboard                        */
+/* 기존 .feasibility-block/.panel-hint/.select-tool-btn/.bt-status-badge */
+/* 톤을 그대로 재사용하고, 이 화면에서만 필요한 레이아웃만 새로 추가합니다.      */
+/* ------------------------------------------------------------ */
+
+.dev-tab-back-btn {
+  border: none;
+  border-right: 1px solid var(--color-border);
+  background: none;
+  margin: 6px 6px 6px 0;
+  padding: 0 16px 0 0;
+  color: var(--color-accent);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.dev-tab-back-btn:hover {
+  color: #2471a3;
+}
+
+.dev-dashboard {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 18px 20px 40px 20px;
+}
+
+.dev-dashboard[hidden] {
+  display: none;
+}
+
+.dd-progress {
+  color: #7f8c8d;
+  font-size: 13px;
+  text-align: center;
+  padding: 60px 0;
+}
+
+.dd-header {
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dd-header-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin: 0 0 10px 0;
+}
+
+.dd-header-dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.dd-header-dl dt {
+  color: #7f8c8d;
+}
+
+.dd-header-dl dd {
+  margin: 2px 0 0 0;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--color-primary);
+}
+
+.dd-section {
+  margin: 0 0 22px 0;
+}
+
+.dd-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin: 0 0 10px 0;
+}
+
+.dd-section-sub {
+  font-weight: 400;
+  font-size: 11px;
+  color: #95a5a6;
+  margin-left: 4px;
+}
+
+.dd-rank-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dd-rank-item {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: #fff;
+}
+
+.dd-rank-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dd-rank-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-bg-panel);
+  color: #7f8c8d;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.dd-rank-name {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--color-primary);
+  flex: 1 1 auto;
+}
+
+.dd-rank-label {
+  margin: 6px 0 2px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.dd-rank-reason {
+  margin: 0;
+  font-size: 12px;
+  color: #636e72;
+}
+
+.dd-rank-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.dd-link-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--color-accent);
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.dd-link-btn:hover {
+  color: #2471a3;
+}
+
+.dd-issue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dd-issue-item {
+  border-left: 3px solid #f1c9c2;
+  padding: 2px 0 2px 12px;
+}
+
+.dd-issue-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.dd-issue-reason {
+  margin: 2px 0 0 0;
+  font-size: 12px;
+  color: #636e72;
+}
+
+.dd-issue-next {
+  margin: 4px 0 0 0;
+  font-size: 12px;
+}
+
+.dd-issue-more {
+  padding-left: 12px;
+}
+
+.dd-scale-dl {
+  margin: 0;
+  font-size: 12px;
+}
+
+.dd-scale-dl dt {
+  color: #7f8c8d;
+  margin-top: 10px;
+}
+
+.dd-scale-dl dt:first-child {
+  margin-top: 0;
+}
+
+.dd-scale-dl dd {
+  margin: 2px 0 0 0;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.dd-scale-current {
+  font-size: 12px;
+  margin: 0 0 10px 0;
+}
+
+.dd-capacity-branch {
+  background: var(--color-bg-panel);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.dd-capacity-branch-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin: 0 0 6px 0;
+}
+
+.dd-muted {
+  color: #95a5a6 !important;
+  font-weight: 400 !important;
+}
+
+.dd-muted-inline {
+  color: #95a5a6;
+  font-weight: 400;
+}
+
+.dd-footer {
+  margin-top: 24px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
+}
+
+/* ------------------------------------------------------------ */
+/* 8.11단계: 사업유형 검토 시스템 — 사업제도 카드 + OP(개발대안) 관리          */
+/* ------------------------------------------------------------ */
+
+.business-type-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bt-card {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.bt-card-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.bt-card-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--color-primary);
+}
+
+.bt-card-category {
+  font-size: 11px;
+  font-weight: 600;
+  color: #7f8c8d;
+  background: var(--color-bg-panel);
+  border-radius: 10px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.bt-card-body {
+  padding: 4px 14px 14px 14px;
+  border-top: 1px solid var(--color-border);
+  font-size: 12px;
+}
+
+.bt-legal-basis {
+  color: #7f8c8d;
+  margin: 8px 0;
+}
+
+.bt-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin: 14px 0 6px 0;
+}
+
+.bt-table-wrap {
+  overflow-x: auto;
+}
+
+.bt-req-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.bt-req-table th,
+.bt-req-table td {
+  border: 1px solid var(--color-border);
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.bt-req-table th {
+  background: var(--color-bg-panel);
+  color: #7f8c8d;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.bt-req-notes {
+  color: #7f8c8d;
+  font-size: 11px;
+}
+
+.bt-status-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.bt-status-ok {
+  background: #eafaf1;
+  color: #1e8449;
+}
+
+.bt-status-conditional {
+  background: #fef5e7;
+  color: #b9770e;
+}
+
+.bt-status-no {
+  background: #fdedec;
+  color: #c0392b;
+}
+
+.bt-status-unknown {
+  background: #eceff1;
+  color: #636e72;
+}
+
+.bt-rule-block {
+  background: var(--color-bg-panel);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+}
+
+.bt-rule-block p {
+  margin: 0 0 4px 0;
+}
+
+.bt-rule-notes {
+  color: #7f8c8d;
+  font-size: 11px;
+}
+
+.bt-list {
+  margin: 4px 0 0 0;
+  padding-left: 18px;
+}
+
+.bt-list li {
+  margin-bottom: 4px;
+}
+
+.bt-subblock {
+  margin-bottom: 8px;
+}
+
+.bt-subblock-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #7f8c8d;
+  margin: 0 0 4px 0;
+}
+
+.bt-source-tag {
+  display: block;
+  color: #95a5a6;
+  font-size: 10px;
+  margin-top: 4px;
+}
+
+/* OP(개발대안) 관리 */
+.op-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.op-card {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px 14px;
+}
+
+.op-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.op-card-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--color-primary);
+}
+
+.op-remove-btn {
+  border: none;
+  background: none;
+  color: #c0392b;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 6px;
+}
+
+.op-remove-btn:hover {
+  text-decoration: underline;
+}
+
+.op-card-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.op-card-fields label,
+.op-notes-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: #636e72;
+}
+
+.op-field {
+  padding: 5px 7px;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.op-notes-label {
+  margin-top: 8px;
+}
+
+.op-notes {
+  min-height: 50px;
+  resize: vertical;
+}
+
+.op-add-btn {
+  flex: 0 0 auto;
+  display: inline-block;
+  width: auto;
+}
+
+@media (max-width: 600px) {
+  .op-card-fields {
+    grid-template-columns: 1fr;
+  }
+}

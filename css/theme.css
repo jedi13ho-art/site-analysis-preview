@@ -1,0 +1,193 @@
+/*
+ * 색·표면 테마 — Chapter 1(대상지 선정)과 Chapter 2(개발검토)를 같은 결로 맞춥니다.
+ *
+ * style.css 뒤에 읽힙니다. style.css는 손대지 않습니다(기존 주석에 인코딩 깨짐이
+ * 있어 편집 시 손상 위험). 여기서는 색과 테두리·모서리만 다루고, 배치(레이아웃)와
+ * 동작은 건드리지 않습니다.
+ *
+ * 방향: 파랑 계열 UI 색을 검토서용 녹회색 계열로 바꿉니다. 종이 위의 문서처럼
+ * 흰 카드 + 가는 실선 + 낮은 채도. 지도 위 색(선택 필지 빨강, 용도지역 범례 등)은
+ * 구분이 목적이므로 바꾸지 않습니다.
+ */
+
+:root {
+  /* 문서 바탕 */
+  --ink: #263d3a;
+  --muted: #75827e;
+  --line: #dde4e0;
+  --accent: #316e62;
+  --accent-dark: #27594f;
+  --accent-soft: #e8efe9;
+  --paper: #ffffff;
+  --ground: #f3f5f2;
+
+  /* 기존 style.css가 쓰는 이름에 같은 값을 연결합니다 */
+  --color-primary: #263d3a;
+  --color-accent: #316e62;
+  --color-bg-panel: #f3f5f2;
+  --color-border: #dde4e0;
+  /* --color-selected(선택 필지 빨강)는 지도에서 구분이 목적이라 그대로 둡니다 */
+}
+
+body {
+  color: var(--ink);
+}
+
+/* ── 파랑 → 녹회색 ─────────────────────────────────────────────── */
+.search-btn:hover,
+.building-analysis-btn:not(:disabled):hover,
+.fs-open-btn:hover,
+.select-tool-btn-primary:hover {
+  background-color: var(--accent-dark);
+}
+
+.radius-btn:hover,
+.search-status.loading,
+.search-result-item:hover {
+  background-color: var(--accent-soft);
+}
+
+.map-toolbar-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.dd-link-btn:hover {
+  color: var(--accent-dark);
+}
+
+/* ── 표면: 종이 위의 문서 ───────────────────────────────────────── */
+.left-panel,
+.right-panel,
+.multi-parcel-panel {
+  background: var(--paper);
+  border-color: var(--line);
+}
+
+.left-section,
+.panel-card,
+.note-card,
+.search-panel,
+.result-section {
+  border-color: var(--line);
+}
+
+/* 모서리를 줄여 도면·검토서 느낌으로 맞춥니다 */
+.panel-card,
+.note-card,
+.search-panel,
+.left-section,
+.search-result-item,
+.boundary-item,
+.multi-parcel-item,
+.legend-item {
+  border-radius: 3px;
+}
+
+button,
+input,
+select,
+textarea {
+  border-radius: 3px;
+}
+
+/* 떠 있는 버튼·상태표시도 같은 결로 */
+.floating-toggle-btn,
+.map-toolbar-btn,
+.floating-server-status {
+  border-radius: 3px;
+  border-color: var(--line);
+}
+
+/* 섹션 제목 아래 실선 — 검토서의 항목 구분선 */
+.left-section-title,
+.layer-group-heading {
+  color: var(--ink);
+}
+
+/* 안내문은 바탕에서 한 단계 물러나게 */
+.panel-hint,
+.search-note,
+.left-flow-hint,
+.select-tools-hint {
+  color: var(--muted);
+}
+
+/* ── Chapter 1(대상지 선정)을 Chapter 2와 같은 결로 ──────────────── */
+
+/* 지금 어느 단계인지 알려주는 눈썹문구. Chapter 2의 .dw-eyebrow와 같은 모양. */
+.ch1-eyebrow {
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  color: var(--muted);
+  padding: 2px 2px 8px;
+}
+
+/* 지도 위에 떠 있는 카드들을 한 종류의 종이로 통일합니다.
+   기존에는 카드마다 그림자·모서리가 조금씩 달랐습니다. */
+.left-panel,
+.right-panel,
+.multi-parcel-panel,
+.zoning-legend,
+.map-legend-overlay,
+.area-select-hint {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: 0 2px 10px rgba(38, 61, 58, 0.08);
+  background: var(--paper);
+}
+
+/* 부차적 동작(초기화·검색결과 지우기)은 빨강 대신 조용한 테두리 버튼으로.
+   빨강은 지도에서 "선택된 필지"를 가리키는 색이라 버튼과 겹치면 뜻이 흐려집니다. */
+.search-reset-btn,
+.select-tool-btn-danger {
+  color: var(--muted);
+  border-color: var(--line);
+  background: var(--paper);
+}
+.search-reset-btn:hover,
+.select-tool-btn-danger:hover {
+  color: var(--ink);
+  background: var(--accent-soft);
+  border-color: #9ab3a9;
+}
+
+/* 주 동작 버튼은 하나만 눈에 띄게 */
+.fs-open-btn,
+.search-btn,
+.select-tool-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* 검색 결과·필지 목록의 구분선을 검토서의 실선 톤으로 */
+.search-result-item,
+.multi-parcel-item,
+.boundary-item {
+  border-color: var(--line);
+}
+
+/* 지도 위 작은 안내는 종이 위 주석처럼 */
+.map-source-note,
+.area-select-hint {
+  color: var(--muted);
+}
+
+/* 좁은 화면(900px 이하)에서 style.css가 .right-panel과 .multi-parcel-panel을
+   똑같이 left:12px; bottom:12px로 내려보내 두 카드가 겹쳤습니다.
+   선택 필지 카드(주 동작 "개발가능성 분석"이 들어 있음)를 오른쪽으로 보내 겹침을 풉니다. */
+@media (max-width: 900px) {
+  .multi-parcel-panel {
+    /* 네 변을 모두 명시합니다. left/right와 top/bottom 중 한쪽만 바꾸면
+       브라우저가 나머지를 auto로 풀어 상자가 늘어납니다. */
+    left: auto;
+    right: 12px;
+    top: auto;
+    bottom: 12px;
+    width: 320px;
+    max-width: calc(100vw - 24px);
+    height: auto;
+    max-height: 46vh;
+  }
+}

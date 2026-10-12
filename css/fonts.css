@@ -1,0 +1,110 @@
+/*
+ * 서체 시스템 — 두 계열을 역할로 나눠 씁니다.
+ *
+ *   KoPub Dotum Pro  →  실무 내용. 검토서 본문, 표의 값, 수치, 근거 문장, 주석.
+ *                       문서로 읽고 인쇄되는 글이 여기에 해당합니다.
+ *   NanumSquare      →  화면 구성 요소. 버튼, 탭, 내비게이션, 배지, 상태 라벨,
+ *                       제목/브랜드처럼 '조작하거나 훑어보는' 글입니다.
+ *
+ * 굵기 위계
+ *   KoPub Dotum Pro는 Light(300) / Medium(500) / Bold(700) 3종뿐이고
+ *   Regular이 없습니다. 그래서 본문 기본값은 Medium(500)이고, Light(300)는
+ *   보조설명·캡션에, Bold(700)는 강조·표 머리글에 씁니다.
+ *   400·600을 지정하면 브라우저가 합성(가짜 굵기)하므로 쓰지 않습니다.
+ *
+ *   NanumSquare는 Light(300) / Regular(400) / Bold(700) / ExtraBold(800) 4종입니다.
+ *
+ * 파일
+ *   원본 OTF/TTF(합계 9.0MB)를 한글 11,172자 전체 + 라틴·기호 범위로 서브셋해
+ *   WOFF2로 변환했습니다(합계 1.49MB). 원본은 변경하지 않았습니다.
+ *   변환 스크립트: docs/폰트_적용_기준.md 참고.
+ *
+ * 주의 — 이 서체들에 없는 글자
+ *   ✕ (U+2715)  7종 모두 없음 → × (U+00D7)를 쓸 것
+ *   ₩ (U+20A9)  KoPub Pro에 없음 → "원" 표기를 쓸 것
+ *   – (U+2013)  KoPub Pro에 없음 → - 또는 ~ 를 쓸 것
+ *   없는 글자는 대체 서체로 렌더링되어 그 글자만 모양이 달라집니다.
+ */
+
+/* ── KoPub Dotum Pro ─────────────────────────────────────────── */
+@font-face {
+  font-family: "KoPub Dotum Pro";
+  src: url("../assets/fonts/KoPubDotumPro-Light.woff2") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "KoPub Dotum Pro";
+  src: url("../assets/fonts/KoPubDotumPro-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "KoPub Dotum Pro";
+  src: url("../assets/fonts/KoPubDotumPro-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ── NanumSquare ─────────────────────────────────────────────── */
+@font-face {
+  font-family: "NanumSquare";
+  src: url("../assets/fonts/NanumSquare-Light.woff2") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "NanumSquare";
+  src: url("../assets/fonts/NanumSquare-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "NanumSquare";
+  src: url("../assets/fonts/NanumSquare-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "NanumSquare";
+  src: url("../assets/fonts/NanumSquare-ExtraBold.woff2") format("woff2");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ── 토큰 ────────────────────────────────────────────────────── */
+:root {
+  /* 실무 내용용 — 본문, 표의 값, 수치, 근거 문장 */
+  --font-doc: "KoPub Dotum Pro", "Malgun Gothic", "맑은 고딕",
+    "Apple SD Gothic Neo", sans-serif;
+  /* 화면 구성 요소용 — 버튼, 탭, 내비게이션, 배지, 제목 */
+  --font-ui: "NanumSquare", "Malgun Gothic", "맑은 고딕",
+    "Apple SD Gothic Neo", sans-serif;
+  /* 숫자를 표에서 세로로 맞춰 읽을 때 */
+  --font-num: "KoPub Dotum Pro", "Consolas", "Malgun Gothic", monospace;
+
+  --fw-doc-light: 300;  /* 보조설명·캡션·주석 */
+  --fw-doc-body: 500;   /* 본문 기본 (KoPub은 Regular이 없음) */
+  --fw-doc-bold: 700;   /* 본문 강조·표 머리글 */
+
+  --fw-ui-light: 300;   /* 큰 글자의 가벼운 표현 */
+  --fw-ui-regular: 400; /* 버튼·라벨 기본 */
+  --fw-ui-bold: 700;    /* 활성 상태·소제목 */
+  --fw-ui-black: 800;   /* 브랜드·대제목·eyebrow */
+}
+
+/* 표의 수치는 자릿수가 세로로 맞아야 비교가 됩니다. */
+.num,
+td.num,
+th.num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}

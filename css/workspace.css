@@ -1,0 +1,1512 @@
+/*
+ * Chapter 2 개발검토 — 문서형 레이아웃.
+ *
+ * 왼쪽은 도구 패널이 아니라 검토서 목차입니다. 오른쪽은 탭으로 끊긴 화면이 아니라
+ * 위에서 아래로 이어지는 한 벌의 검토서입니다(01 현황 → 02 사업유형 → 03 개발대안
+ * → 04 용적률·공공기여 → 05 종합의견). 모든 섹션이 항상 DOM에 있으므로 인쇄하면
+ * 검토서가 그대로 나옵니다.
+ *
+ * 색은 theme.css의 토큰(--ink/--muted/--line/--accent/--paper/--ground)을 씁니다.
+ * 서체는 typography.css가 배정합니다.
+ */
+
+.dev-workspace {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  background: var(--ground);
+  color: var(--ink);
+}
+.dev-workspace[hidden] {
+  display: none;
+}
+
+/* style.css는 이 두 블록을 탭 화면 기준(가운데 760px 단 하나)으로 잡아 두었습니다.
+   문서형 레이아웃에서는 섹션마다 폭이 달라야 하므로 그 제약을 풉니다. */
+.dev-dashboard,
+.dev-workspace-content {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── 머리말 ──────────────────────────────────────────────────── */
+.dw-header {
+  flex: 0 0 auto;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 22px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+.dw-brand {
+  font-size: 16px;
+}
+.dw-brand span {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  margin-left: 10px;
+}
+.dw-back-btn,
+.dw-print-btn,
+.dw-ghost-btn {
+  cursor: pointer;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.dw-back-btn:hover,
+.dw-print-btn:hover,
+.dw-ghost-btn:hover {
+  background: var(--accent-soft);
+  border-color: #9ab3a9;
+}
+.dw-ghost-btn.chosen {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.dw-draft {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  padding: 3px 10px;
+  border-radius: 3px;
+}
+
+/* ── 본체 2단 ────────────────────────────────────────────────── */
+.dw-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+}
+
+.dw-aside {
+  border-right: 1px solid var(--line);
+  background: #edf1ec;
+  padding: 30px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.dw-aside-label {
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  color: var(--muted);
+}
+.dw-aside-title {
+  font-size: 19px;
+  line-height: 1.5;
+  margin: 10px 0 6px;
+  word-break: keep-all;
+}
+.dw-aside-sub {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.dw-nav {
+  margin-top: 26px;
+}
+.dw-nav a {
+  display: block;
+  text-decoration: none;
+  color: #63736b;
+  padding: 11px 8px;
+  margin: 3px 0;
+  border-left: 2px solid transparent;
+  font-size: 13px;
+  cursor: pointer;
+}
+.dw-nav a span {
+  font-size: 10px;
+  margin-right: 11px;
+}
+.dw-nav a:hover {
+  background: #e6ede7;
+}
+.dw-nav a.active {
+  background: #e0e9e1;
+  color: #285e50;
+  border-left-color: var(--accent);
+}
+.dw-aside-bottom {
+  margin-top: auto;
+  padding-top: 20px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.dw-aside-bottom strong {
+  color: #53695d;
+  display: block;
+  margin-bottom: 4px;
+}
+.dw-aside-bottom p {
+  margin: 0;
+}
+
+/* ── 검토서 본문 ─────────────────────────────────────────────── */
+.dw-main {
+  overflow-y: auto;
+  padding: 36px 44px 28px;
+  /* scroll-behavior: smooth를 여기 두면 scrollTop 직접 지정(문서 맨 위로 되돌리기)까지
+     애니메이션됩니다. 부드러운 이동이 필요한 목차 클릭만 JS에서 behavior를 지정합니다. */
+}
+/* 아주 넓은 화면에서 글줄이 지나치게 길어지지 않게 본문 폭을 제한합니다.
+   스크롤바는 화면 오른쪽 끝에 그대로 두기 위해 .dw-main 자체가 아니라
+   그 안의 블록에 폭을 겁니다. */
+.dw-main > * {
+  max-width: 1180px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.dw-page-heading .dw-eyebrow {
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  color: var(--muted);
+}
+.dw-page-heading h1 {
+  font-size: 28px;
+  line-height: 1.45;
+  letter-spacing: -1.2px;
+  margin: 10px 0 0;
+}
+.dw-page-heading p {
+  color: var(--muted);
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+.dw-notice {
+  font-size: 12px;
+  border-left: 3px solid #a4b8a8;
+  background: #eaf0e8;
+  padding: 12px 16px;
+  margin: 26px 0 34px;
+  color: #5c7062;
+}
+
+.dw-section {
+  margin: 0 0 44px;
+  scroll-margin-top: 20px;
+}
+.dw-section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  margin: 0 0 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.dw-section-heading h2 {
+  font-size: 18px;
+  margin: 0;
+  letter-spacing: -0.4px;
+}
+.dw-section-heading h2 small {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: #80968b;
+  margin-right: 11px;
+}
+.dw-section-heading p {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 5px 0 0;
+}
+
+.dw-block {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  padding: 20px 22px;
+  margin-bottom: 14px;
+}
+.dw-block-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.dw-block-title {
+  font-size: 14px;
+  margin: 0 0 14px;
+}
+.dw-block-head .dw-block-title {
+  margin: 0;
+}
+.dw-block-sub {
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: 8px;
+}
+
+/* 01 대상지 현황 — 지도 + 조회값 */
+.dw-site-overview {
+  display: grid;
+  grid-template-columns: 42% minmax(0, 1fr);
+  border: 1px solid var(--line);
+  background: var(--paper);
+  margin-bottom: 14px;
+}
+.dev-workspace-map-slot {
+  position: relative;
+  min-height: 260px;
+  overflow: hidden;
+  background: #e9eeeb;
+}
+.dev-workspace-map-slot .map-container {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.dw-site-data {
+  padding: 20px 24px;
+}
+
+/* 02 사업유형 검토 / 상세 검토표 */
+.dw-details {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  padding: 0 18px;
+  margin-top: 14px;
+}
+.dw-details > summary {
+  cursor: pointer;
+  padding: 13px 0;
+  font-size: 13px;
+  color: var(--accent);
+  list-style: none;
+}
+.dw-details > summary::-webkit-details-marker {
+  display: none;
+}
+.dw-details > summary::before {
+  content: "▸ ";
+}
+.dw-details[open] > summary::before {
+  content: "▾ ";
+}
+.dw-details[open] {
+  padding-bottom: 18px;
+}
+
+/* 03 개발대안 비교 */
+.dw-op-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 0 0 10px;
+}
+.dw-op-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.dw-table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+.dw-table-scroll[hidden] {
+  display: none;
+}
+.op-table {
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: fixed;
+  min-width: 560px;
+}
+.op-table th,
+.op-table td {
+  padding: 11px 14px;
+  text-align: left;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  vertical-align: top;
+}
+.op-table tr:last-child > * {
+  border-bottom: 0;
+}
+.op-table tr > *:last-child {
+  border-right: 0;
+}
+.op-table thead th {
+  background: #eef3ef;
+  min-width: 190px;
+}
+.op-table thead th:first-child,
+.op-table tbody th {
+  width: 170px;
+  min-width: 170px;
+}
+.op-table tbody th {
+  font-size: 11px;
+  color: #758278;
+  background: #fafbf9;
+}
+.op-table .op-label {
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: var(--accent);
+  display: block;
+  margin-bottom: 8px;
+}
+.op-table .op-actions {
+  display: flex;
+  gap: 5px;
+}
+.op-table .op-actions button {
+  font-size: 11px;
+  padding: 4px 8px;
+}
+.op-table .unknown {
+  color: #8a938d;
+}
+.op-table input.op-field,
+.op-table textarea.op-field {
+  width: 100%;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 4px 5px;
+  font-size: 12px;
+  color: var(--ink);
+  border-radius: 3px;
+}
+.op-table input.op-field:hover,
+.op-table textarea.op-field:hover {
+  border-color: var(--line);
+}
+.op-table input.op-field:focus,
+.op-table textarea.op-field:focus {
+  border-color: var(--accent);
+  background: var(--paper);
+  outline: none;
+}
+.op-table textarea.op-field {
+  min-height: 56px;
+  resize: vertical;
+}
+.dw-empty {
+  border: 1px dashed var(--line);
+  background: var(--paper);
+  padding: 22px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+  margin: 0;
+}
+.dw-empty[hidden] {
+  display: none;
+}
+
+/* 05 종합의견 */
+.dw-conclusion-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  background: var(--paper);
+  border: 1px solid var(--line);
+}
+.dw-conclusion-grid > div {
+  padding: 22px 24px;
+}
+.dw-conclusion-grid > div + div {
+  border-left: 1px solid var(--line);
+}
+.dw-preferred {
+  font-size: 13px;
+  margin: 0 0 4px;
+}
+.dw-note-label {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin: 18px 0 6px;
+}
+#dw-review-note {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-size: 12px;
+  color: var(--ink);
+  background: #fafbf9;
+}
+.dw-note-state {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.dw-followup {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  text-align: left;
+  width: 100%;
+  padding: 12px 0;
+  gap: 13px;
+  border-radius: 0;
+  cursor: pointer;
+}
+.dw-followup:hover {
+  background: var(--accent-soft);
+}
+.dw-followup > span {
+  font-size: 10px;
+  color: #91a196;
+}
+.dw-followup strong {
+  font-size: 12px;
+  display: block;
+}
+.dw-followup p {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.dw-followup b {
+  margin-left: auto;
+  font-weight: normal;
+  color: var(--muted);
+}
+
+.dw-footer-bar {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+  margin-top: 8px;
+}
+
+/* ── 대시보드 블록을 문서 톤에 맞춤 ───────────────────────────── */
+.dev-dashboard .dd-section {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  padding: 18px 20px;
+  margin-bottom: 14px;
+}
+.dev-dashboard .dd-section-title {
+  font-size: 14px;
+  margin: 0 0 12px;
+}
+.dd-scale-current {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+
+.brx-guide { margin:0 0 14px; padding:12px 14px; border-left:3px solid var(--accent); background:#f6f5f1; color:var(--muted); font-size:12px; line-height:1.6; }
+.business-rule-explorer { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-bottom:18px; }
+.brx-card { border:1px solid var(--line); border-top:3px solid var(--accent); background:var(--paper); }
+.brx-card > summary { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; padding:18px; cursor:pointer; list-style:none; }
+.brx-card > summary::-webkit-details-marker { display:none; }
+.brx-card > summary::before { content:"▸"; color:var(--muted); margin-top:2px; }
+.brx-card[open] > summary::before { content:"▾"; }
+.brx-card h3 { margin:0 0 7px; font-size:17px; }
+.brx-card summary p { margin:0; color:var(--muted); font-size:11px; line-height:1.55; }
+.brx-far-info { display:flex; flex-wrap:wrap; gap:8px 18px; margin-top:8px; }
+.brx-far-info > div { display:grid; gap:2px; }
+.brx-far-info strong { color:var(--muted); font-size:10px; font-weight:600; }
+.brx-far-info span { font-size:12px; font-weight:700; }
+.brx-card-body { padding:0 18px 18px; border-top:1px solid var(--line); }
+.brx-expand-note { margin:12px 0 0; color:var(--muted); font-size:10px; }
+.brx-overall { flex:0 0 auto; padding:5px 8px; border-radius:2px; font-size:11px; font-weight:700; }
+.brx-overall.is-match { background:#e9f3ed; color:#35634a; }
+.brx-overall.is-mismatch { background:#f7ece8; color:#8a4938; }
+.brx-requirements { list-style:none; padding:0; margin:0; }
+.brx-requirement { padding:12px 0; border-bottom:1px solid var(--line); }
+.brx-requirement:last-child { border-bottom:0; padding-bottom:0; }
+.brx-req-head { display:flex; justify-content:space-between; gap:10px; margin-bottom:7px; font-size:12px; }
+.brx-req-head span { font-weight:700; }
+.brx-match .brx-req-head span { color:#35634a; }
+.brx-mismatch .brx-req-head span { color:#9a4938; }
+.brx-unknown .brx-req-head span { color:#786b50; }
+.brx-requirement dl { margin:0; font-size:11px; line-height:1.55; }
+.brx-requirement dl div { display:grid; grid-template-columns:45px 1fr; gap:7px; }
+.brx-requirement dt { color:var(--muted); }
+.brx-requirement dd { margin:0; }
+@media (max-width:1080px) { .business-rule-explorer { grid-template-columns:1fr; } }
+
+/* ── 좁은 화면 ───────────────────────────────────────────────── */
+@media (max-width: 1080px) {
+  .dw-layout {
+    grid-template-columns: 190px minmax(0, 1fr);
+  }
+  .dw-main {
+    padding: 28px 24px;
+  }
+  .dw-site-overview {
+    grid-template-columns: 1fr;
+  }
+  .dw-conclusion-grid {
+    grid-template-columns: 1fr;
+  }
+  .dw-conclusion-grid > div + div {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+  .dw-page-heading h1 {
+    font-size: 24px;
+  }
+}
+
+/* ── 인쇄: 검토서 한 벌 ──────────────────────────────────────── */
+@media print {
+  .app-header,
+  .dw-header,
+  .dw-aside,
+  .dw-op-toolbar,
+  .floating-toggle-btn,
+  .map-display-toolbar {
+    display: none !important;
+  }
+  .dev-workspace {
+    position: static;
+    background: #fff;
+  }
+  .dw-layout {
+    display: block;
+  }
+  .dw-main {
+    overflow: visible;
+    padding: 0;
+  }
+  .dw-section {
+    break-inside: avoid;
+    margin-bottom: 26px;
+  }
+  .dw-table-scroll {
+    overflow: visible;
+  }
+  .op-table {
+    min-width: 0;
+  }
+  .dw-details {
+    display: none;
+  }
+}
+
+/* ── 검토 상태 표시 (실행 묶음 1) ──────────────────────────────── */
+
+/* 다른 대상지의 검토가 남아 있을 때의 안내. 내용을 지우지 않고 알리기만 합니다. */
+.dw-review-banner {
+  border: 1px solid #d8c9a6;
+  border-left: 3px solid #b08d3f;
+  background: #fbf7ec;
+  padding: 14px 16px;
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: #6a5a38;
+}
+.dw-review-banner[hidden] {
+  display: none;
+}
+.dw-review-banner strong {
+  display: block;
+  margin-bottom: 6px;
+}
+.dw-review-banner p {
+  margin: 0 0 10px;
+  line-height: 1.7;
+}
+.dw-review-banner-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 셀 값의 출처 표시 — "표에서 온 초안"과 "사용자 가정"을 구분합니다.
+   둘 다 법적으로 검증된 값이 아니지만 성격이 다릅니다. */
+.op-origin {
+  display: inline-block;
+  font-size: 9px;
+  letter-spacing: 0.3px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  margin-bottom: 4px;
+}
+.op-origin-draft {
+  background: #fbf3e2;
+  color: #8a6d2f;
+  border: 1px solid #e6d5ae;
+}
+.op-origin-user {
+  background: #eef3ef;
+  color: #56705f;
+  border: 1px solid #cfdcd3;
+}
+/* 미검증 초안 값이 든 칸은 왼쪽에 표시를 남깁니다 */
+.op-table td.op-cell-draft {
+  box-shadow: inset 2px 0 0 #e0c98f;
+}
+
+/* 02 추천 목록의 건수 줄 — 대상/완료/미판정을 나눠 보여줍니다 */
+.dd-rank-counts {
+  margin: 2px 0 0;
+  font-size: 11px;
+}
+
+/* 04 공공기여의 미산정 사유 목록 */
+.fs-unmet-reasons {
+  margin: 10px 0 0;
+  padding: 12px 16px 12px 30px;
+  border: 1px solid #e3d6c4;
+  border-left: 3px solid #c9a961;
+  background: #fdfaf3;
+  font-size: 11px;
+  color: #6a5a38;
+  line-height: 1.8;
+}
+.fs-unmet-reasons[hidden] {
+  display: none;
+}
+.fs-unmet-reasons li {
+  margin: 0 0 3px;
+}
+
+
+/* ── OP 조건·계산 근거 패널 (OP 중심 통합) ─────────────────────── */
+
+/* 03 OP 비교 안에서 한 번에 하나의 OP만 편집합니다.
+   별도 고정 사이드패널이나 또 다른 계산 페이지를 만들지 않습니다. */
+.dw-op-detail {
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--accent);
+  background: var(--paper);
+  margin-top: 16px;
+  padding: 18px 22px 22px;
+}
+.dw-op-detail[hidden] {
+  display: none;
+}
+.dw-op-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+}
+.dw-op-detail-label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  color: var(--muted);
+}
+#dw-op-detail-title {
+  font-size: 17px;
+  margin: 6px 0 2px;
+}
+.dw-op-detail-sub {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+/* 계산 프로파일 — 이 결과가 어느 수준인지 한 줄로 못 박습니다 */
+.dw-op-profile {
+  font-size: 11px;
+  color: #6a5a38;
+  background: #fdfaf3;
+  border: 1px solid #e3d6c4;
+  border-left: 3px solid #c9a961;
+  padding: 9px 13px;
+  margin: 0 0 12px;
+  line-height: 1.7;
+}
+/* 다른 대상지 기준 결과 — 편집을 막고 그 사실을 알립니다 */
+.dw-op-stale {
+  font-size: 11px;
+  color: #6a5a38;
+  background: #fbf7ec;
+  border: 1px solid #d8c9a6;
+  border-left: 3px solid #b08d3f;
+  padding: 9px 13px;
+  margin: 0 0 12px;
+  line-height: 1.7;
+}
+.dw-op-stale[hidden] {
+  display: none;
+}
+/* 필요한 입력만 펼쳐 보게 — 결과 확인을 위해 전부 채우도록 강제하지 않습니다 */
+.dw-op-fold {
+  border-top: 1px solid var(--line);
+  margin-top: 14px;
+  padding-top: 6px;
+}
+.dw-op-fold > summary {
+  cursor: pointer;
+  padding: 8px 0;
+  font-size: 12px;
+  color: var(--accent);
+  list-style: none;
+}
+.dw-op-fold > summary::-webkit-details-marker {
+  display: none;
+}
+.dw-op-fold > summary::before {
+  content: "▸ ";
+}
+.dw-op-fold[open] > summary::before {
+  content: "▾ ";
+}
+.dw-op-detail-body input:disabled,
+.dw-op-detail-body textarea:disabled {
+  background: #f4f6f4;
+  color: #97a29a;
+  cursor: not-allowed;
+}
+
+/* 지금 편집 중인 OP 열을 표에서 표시합니다 */
+.op-table thead th.op-col-active {
+  background: var(--accent-soft);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+/* 셀마다 배지를 반복하지 않고 OP 단위 상태를 열 머리글에 모읍니다 */
+.op-col-summary {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  margin: 2px 0 6px;
+}
+
+/* 04 종합의견 — 대상지 공통과 OP별 확인사항을 구분합니다 */
+.dw-followup-group + .dw-followup-group {
+  margin-top: 18px;
+}
+.dw-followup-group-title {
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  color: var(--muted);
+  margin: 0 0 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+/* 클릭 대상이 아닌 확인사항(대상지 공통)은 버튼 모양을 주지 않습니다 */
+.dw-followup-static {
+  cursor: default;
+}
+.dw-followup-static:hover {
+  background: transparent;
+}
+
+
+/* ── 가독성 개편 ────────────────────────────────────────────────── */
+
+/* 02 판정 내역 — 건수는 접어 둡니다(핵심 이유가 먼저 읽히도록) */
+.dd-rank-detail {
+  margin-top: 4px;
+}
+.dd-rank-detail > summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--muted);
+  list-style: none;
+}
+.dd-rank-detail > summary::-webkit-details-marker {
+  display: none;
+}
+.dd-rank-detail > summary::before {
+  content: "▸ ";
+}
+.dd-rank-detail[open] > summary::before {
+  content: "▾ ";
+}
+.dd-rank-detail .dd-rank-counts {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* 03 도구줄 — 토글 두 개 */
+.dw-op-toolbar-right {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+/* 표 아래 공통 주석 — 셀마다 반복하던 설명을 여기 한 번만 */
+.dw-op-table-note {
+  font-size: 11px;
+  color: #5c7062;
+  background: #eef3ef;
+  border-left: 3px solid #a4b8a8;
+  padding: 9px 13px;
+  margin: 10px 0 0;
+  line-height: 1.7;
+}
+.dw-op-table-note[hidden] {
+  display: none;
+}
+
+/* 용어 설명 — 평소엔 접혀 있고 필요할 때만 폅니다 */
+.dw-glossary {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  padding: 0 16px;
+  margin-top: 10px;
+}
+.dw-glossary > summary {
+  cursor: pointer;
+  padding: 11px 0;
+  font-size: 12px;
+  color: var(--accent);
+  list-style: none;
+}
+.dw-glossary > summary::-webkit-details-marker {
+  display: none;
+}
+.dw-glossary > summary::before {
+  content: "▸ ";
+}
+.dw-glossary[open] > summary::before {
+  content: "▾ ";
+}
+.dw-glossary dl {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  gap: 7px 16px;
+  margin: 0;
+  padding-bottom: 16px;
+  font-size: 12px;
+}
+.dw-glossary dt {
+  color: var(--ink);
+}
+.dw-glossary dd {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+/* 개발 중이라 아직 없는 기능 — 대상지 문제와 구분되게 */
+.dw-unbuilt-note {
+  font-size: 11px;
+  color: #5a6472;
+  background: #eef1f5;
+  border-left: 3px solid #8fa0b8;
+  padding: 9px 13px;
+  margin: 0 0 12px;
+  line-height: 1.7;
+}
+
+/* 04 확인사항 — 두 종류를 시각적으로 가릅니다 */
+.dw-followup-subtitle {
+  font-size: 11px;
+  margin: 14px 0 2px;
+  padding-left: 9px;
+  border-left: 3px solid var(--line);
+  color: var(--ink);
+}
+.dw-followup-subtitle:first-child {
+  margin-top: 0;
+}
+.dw-followup-subtitle span {
+  color: var(--muted);
+  font-size: 10px;
+  margin-left: 6px;
+}
+.dw-followup-subtitle.is-unbuilt {
+  border-left-color: #8fa0b8;
+}
+.dw-followup-subtitle.is-unknown {
+  border-left-color: #c9a961;
+}
+.dw-followup-static > div {
+  padding-left: 9px;
+}
+
+/* 열 머리글 버튼이 좁은 칸에서 세로로 찌그러지던 문제 — 한 줄에 하나씩 쌓습니다. */
+.op-table .op-actions {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+.op-table .op-actions button {
+  width: 100%;
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* ══ 실무자용 흐름 개편 ════════════════════════════════════════ */
+
+/* 들어오자마자 보는 요약 카드 */
+.dw-summary {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--accent);
+  margin: 18px 0 34px;
+}
+.dw-summary-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1fr;
+  gap: 0;
+}
+.dw-summary-cell {
+  padding: 20px 22px;
+}
+.dw-summary-cell + .dw-summary-cell {
+  border-left: 1px solid var(--line);
+}
+.dw-summary-label {
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+.dw-summary-site {
+  font-size: 15px;
+  margin: 0 0 3px;
+  word-break: keep-all;
+}
+.dw-summary-sub {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.dw-summary-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  line-height: 1.9;
+}
+.dw-summary-list li {
+  padding-left: 17px;
+  position: relative;
+  color: var(--ink);
+}
+.dw-summary-list li::before {
+  content: "·";
+  position: absolute;
+  left: 4px;
+  color: var(--muted);
+}
+.dw-summary-list li.is-ok::before {
+  content: "✓";
+  color: var(--accent);
+  font-size: 11px;
+}
+.dw-summary-list li.is-todo::before {
+  content: "!";
+  color: #b08d3f;
+  font-size: 11px;
+  left: 6px;
+}
+.dw-summary-list li.is-todo {
+  color: #6a5a38;
+}
+.dw-summary-list li.is-loading {
+  color: var(--muted);
+}
+.dw-summary-list li.is-loading::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  top: 0.62em;
+  left: 2px;
+  box-sizing: border-box;
+  border: 1.5px solid #c9d4cc;
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: dw-summary-spin 0.75s linear infinite;
+}
+@keyframes dw-summary-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dw-summary-list li.is-loading::before {
+    animation: none;
+    border-top-color: #c9d4cc;
+  }
+}
+/* 다음 행동 — 한 화면에 버튼 하나 */
+.dw-summary-next {
+  border-top: 1px solid var(--line);
+  background: #f6f9f6;
+  padding: 16px 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.dw-summary-next p {
+  margin: 0;
+  font-size: 12px;
+  color: #5c7062;
+}
+
+/* 단계 끝의 주요 버튼 */
+.dw-step-next {
+  display: flex;
+  justify-content: flex-end;
+  margin: 16px 0 0;
+}
+.dw-next-btn {
+  cursor: pointer;
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  padding: 9px 18px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.dw-next-btn:hover {
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+}
+.dw-next-btn:disabled {
+  cursor: wait;
+  background: #e4e9e5;
+  border-color: #d5ddd7;
+  color: #7b877e;
+}
+
+/* 목차의 진행 상태 */
+.dw-nav-state {
+  display: block;
+  font-style: normal;
+  font-size: 10px;
+  color: var(--muted);
+  margin: 3px 0 0 22px;
+  line-height: 1.5;
+}
+.dw-nav a.active .dw-nav-state {
+  color: #4b6b5e;
+}
+
+/* 상태 한 줄 — 확인됨 / 추가 확인 필요 */
+.dw-status-line {
+  font-size: 12px;
+  margin: 0 0 12px;
+  padding: 9px 13px;
+  line-height: 1.7;
+}
+.dw-status-line b {
+  margin-right: 8px;
+  padding: 1px 7px;
+  border-radius: 2px;
+  font-size: 11px;
+}
+.dw-status-todo {
+  background: #fbf7ec;
+  border-left: 3px solid #b08d3f;
+  color: #6a5a38;
+}
+.dw-status-todo b {
+  background: #b08d3f;
+  color: #fff;
+}
+.dw-status-ok {
+  background: #eef3ef;
+  border-left: 3px solid var(--accent);
+  color: #40584e;
+}
+.dw-status-ok b {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* 왜 중요한지 / 어디서 확인하는지 */
+.dw-why {
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--muted);
+  border-left: 2px solid var(--line);
+  padding-left: 14px;
+  margin: 0 0 14px;
+}
+.dw-why p {
+  margin: 0 0 8px;
+}
+.dw-why p:last-child {
+  margin-bottom: 0;
+}
+.dw-why b {
+  color: var(--ink);
+}
+
+/* 02 사업방식 카드 — 현재 확인 / 조건 미충족 / 추가 확인 */
+.dd-sort-note {
+  font-size: 11px;
+  color: var(--muted);
+  margin: -6px 0 12px;
+}
+.dd-fact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0 22px;
+  margin: 8px 0 12px;
+}
+.dd-fact-label {
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  color: var(--muted);
+  margin: 0 0 4px;
+}
+.dd-fact ul {
+  margin: 0;
+  padding-left: 15px;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.dd-fact-more,
+.dd-fact-note {
+  color: var(--muted);
+  font-size: 11px;
+}
+.dd-fact-note {
+  margin: 4px 0 0;
+  padding-left: 0;
+}
+
+/* OP 열 상태 */
+.op-col-state {
+  display: inline-block;
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 2px;
+  margin: 2px 0 4px;
+}
+.op-col-state.is-ok {
+  background: var(--accent-soft);
+  color: #2b5c4f;
+  border: 1px solid #b6cdc0;
+}
+.op-col-state.is-need-input {
+  background: #fbf7ec;
+  color: #7a6430;
+  border: 1px solid #e0cfa4;
+}
+.op-col-state.is-other-site {
+  background: #eef1f5;
+  color: #55607a;
+  border: 1px solid #c2cbdb;
+}
+
+/* OP 상세 머리말 상태색 */
+.dw-op-profile.is-ok {
+  background: #eef3ef;
+  border-color: #b6cdc0;
+  border-left-color: var(--accent);
+  color: #40584e;
+}
+.dw-op-profile.is-todo {
+  background: #fbf7ec;
+  border-color: #e0cfa4;
+  border-left-color: #b08d3f;
+  color: #6a5a38;
+}
+
+/* 04 종합의견 3부 */
+.dw-part-label {
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  color: var(--accent);
+  margin: 22px 0 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--line);
+}
+.dw-part-label:first-child {
+  margin-top: 0;
+}
+.dw-preferred-detail {
+  margin: 0 0 4px;
+}
+.dw-auto-label {
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  color: var(--muted);
+  margin: 0 0 4px;
+}
+.dw-auto-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  line-height: 1.9;
+}
+.dw-auto-list li {
+  padding-left: 17px;
+  position: relative;
+}
+.dw-auto-list li.is-ok::before {
+  content: "✓";
+  position: absolute;
+  left: 3px;
+  color: var(--accent);
+  font-size: 11px;
+}
+.dw-auto-list li.is-todo::before {
+  content: "!";
+  position: absolute;
+  left: 6px;
+  color: #b08d3f;
+  font-size: 11px;
+}
+.dw-auto-list li.is-todo {
+  color: #6a5a38;
+}
+
+@media (max-width: 1080px) {
+  .dw-summary-grid {
+    grid-template-columns: 1fr;
+  }
+  .dw-summary-cell + .dw-summary-cell {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+  .dw-summary-next {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+/* 인쇄 — 조작 버튼과 개발 안내는 빼고 검토 내용만 */
+@media print {
+  .dw-step-next,
+  .dw-summary-next,
+  .dw-nav-state,
+  .op-table .op-actions,
+  .dw-op-toolbar,
+  .dw-glossary,
+  .dw-review-banner,
+  .dw-op-detail-head button,
+  .dw-note-state {
+    display: none !important;
+  }
+  .dw-summary {
+    border-top-width: 1px;
+  }
+  .dw-summary-grid {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+/* ══ 사업방식 순위·요건 확인 ══════════════════════════════════ */
+
+/* 순위 카드 머리 — 개발 여지를 숫자로 먼저 */
+.dd-rank-item.is-open {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.dd-upside {
+  margin: 0 0 0 auto;
+  text-align: right;
+  line-height: 1.4;
+}
+.dd-upside b {
+  display: block;
+  font-size: 15px;
+  color: var(--accent);
+}
+.dd-upside span {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+}
+.dd-upside.is-none b {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 대표 입지요건 첫 화면 (요건 위계 개편, 2026-09-17) */
+.dd-rank-unclassified-note {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 4px 0 8px;
+  font-style: italic;
+}
+.dg-headline {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 6px 0 4px;
+  color: var(--text);
+}
+.dg-counts {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+.dd-rank-actions .dd-primary-action {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.dd-rank-actions .dd-primary-action:hover {
+  color: #fff;
+  background: var(--accent-dark);
+  border-color: var(--accent-dark);
+}
+.dg-primary-gate {
+  margin: 6px 0 10px;
+}
+.dg-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+.dg-primary-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dg-primary-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 6px 0;
+}
+.dg-primary-icon {
+  flex: 0 0 auto;
+  font-size: 14px;
+  line-height: 1.5;
+  width: 18px;
+  text-align: center;
+}
+.dg-primary-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dg-primary-group {
+  font-size: 13px;
+}
+.dg-primary-detail {
+  font-size: 12px;
+  color: var(--muted);
+}
+.dg-primary-note {
+  font-size: 11px;
+  color: var(--accent);
+}
+.dg-exception-empty {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 6px 0 10px;
+}
+.dg-exception-fold,
+.dg-detail-fold {
+  margin: 6px 0 10px;
+}
+.dg-next-action {
+  font-size: 12px;
+  margin: 4px 0 10px;
+}
+.dg-next-action b {
+  color: var(--accent);
+  margin-right: 4px;
+}
+.dd-check-source {
+  margin-top: 4px;
+}
+
+/* 요건 확인 체크리스트 */
+.dd-checklist {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+.dd-check-progress {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+.dd-check-progress b {
+  color: var(--accent);
+}
+.dd-check-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: chk;
+}
+.dd-check-item {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.dd-check-item:last-child {
+  border-bottom: 0;
+}
+.dd-check-item.is-answered {
+  background: #f6f9f6;
+}
+.dd-check-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.dd-check-label {
+  margin: 0;
+  font-size: 12px;
+}
+.dd-check-detail {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.6;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.dd-check-auto {
+  margin: 3px 0 0;
+  font-size: 10px;
+  color: #80968b;
+}
+.dd-check-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 4px;
+}
+.dd-check-actions button {
+  font-size: 11px;
+  padding: 4px 9px;
+}
+
+/* 지금 조건으로는 어려운 사업 */
+.dd-blocked-list {
+  margin: 0 0 8px;
+  padding-left: 16px;
+  font-size: 12px;
+  line-height: 1.9;
+}
+.dd-rank-rest {
+  margin-top: 8px;
+}
+
+@media print {
+  .dd-check-actions,
+  .dd-rank-actions {
+    display: none !important;
+  }
+}

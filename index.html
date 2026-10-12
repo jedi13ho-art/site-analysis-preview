@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>서울 필지 분석 프로그램 - 사이트 분석</title>
+
+  <!-- Leaflet CSS (CDN, 인터넷 연결 필요) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <!-- 읽는 순서가 중요합니다. 뒤에 오는 파일이 앞을 덮어씁니다.
+       fonts.css      @font-face와 서체 토큰
+       style.css      기존 스타일 (직접 수정하지 않음 — 주석 인코딩 깨짐 구간 있음)
+       theme.css      색·표면 테마 (Chapter 1·2 공통)
+       workspace.css  Chapter 2 문서형 레이아웃
+       typography.css 서체 배정 (반드시 마지막) -->
+  <link rel="stylesheet" href="css/fonts.css?v=1.00" />
+  <link rel="stylesheet" href="css/style.css?v=10.40" />
+  <link rel="stylesheet" href="css/theme.css?v=1.03" />
+  <link rel="stylesheet" href="css/workspace.css?v=1.14" />
+  <link rel="stylesheet" href="css/typography.css?v=1.09" />
+</head>
+<body>
+  <!-- 2026-09-10: 전체 UI 개편 — 지도 전체화면 + 떠 있는 카드 방식으로 전환.
+       기존 상단 헤더(제목/단계 배지)는 지도를 가리지 않기 위해 숨겼습니다. 코드는
+       지우지 않았으니 필요하면 이 <header>의 hidden만 지우면 됩니다. 패널 접기/펼치기
+       버튼과 서버 상태 배지는 아래 카드 쪽으로 옮겼습니다(같은 id, 같은 동작 그대로). -->
+  <header class="app-header" hidden>
+    <h1>서울 필지 분석 프로그램</h1>
+    <span class="stage-badge">사이트 분석 프로그램</span>
+  </header>
+
+  <div class="app-body">
+    <!-- 카드가 접혀도 항상 눌러서 다시 펼 수 있도록, 접기 버튼은 카드 밖(항상 표시)에 둡니다. -->
+    <button id="btn-toggle-left-panel" class="panel-toggle-btn floating-toggle-btn" type="button" title="검색 패널 접기/펼치기">☰</button>
+    <span id="server-status" class="server-status floating-server-status">서버 상태 확인 중...</span>
+    <button id="btn-toggle-right-panel-header" class="panel-toggle-btn panel-toggle-btn-right floating-toggle-btn floating-toggle-btn-right" type="button" title="결과 패널 접기/펼치기">▤</button>
+
+    <!-- 왼쪽: 대상지 선택 + 분석 메뉴 (지도 위에 떠 있는 카드) -->
+    <aside class="left-panel" id="left-panel">
+      <div class="left-panel-scroll">
+        <section class="left-section" id="left-search-section">
+          <!-- Chapter 2 검토서와 같은 위계 표시 — 지금 어느 단계인지 한 줄로 알려줍니다.
+               표시용 요소라 아래 검색·선택 동작에는 전혀 관여하지 않습니다. -->
+          <div class="ch1-eyebrow">CHAPTER 01 · 대상지 선정</div>
+
+          <!-- 2단계: 주소 검색 패널 (지도 위에 떠 있는 오버레이) -->
+          <div id="search-panel" class="search-panel ui-only">
+            <div class="search-input-row">
+              <input
+                type="text"
+                id="search-input"
+                placeholder="주소검색"
+                autocomplete="off"
+              />
+              <button id="search-button" class="search-btn" type="button">검색</button>
+            </div>
+
+            <div id="search-status" class="search-status" hidden></div>
+
+            <ul id="search-results" class="search-results" hidden></ul>
+
+            <button id="search-reset-button" class="search-reset-btn" type="button" hidden>
+              검색 결과 지우기
+            </button>
+          </div>
+
+          <!-- UI 개편: 대상지 선택 도구를 검색창 바로 아래 한 줄로 배치. 버튼
+               자체는 기존 8.6단계(구역 그리기 선택) 및 "전체 해제" 기능을 그대로
+               옮겨온 것이라 id·이벤트 로직은 변경하지 않았습니다. -->
+          <div class="select-tools-row" id="select-tools-row">
+            <button id="btn-area-select-start" class="select-tool-btn" type="button" title="지도에 구역을 그려서 그 안의 모든 필지를 한 번에 선택">
+              구역 그리기
+            </button>
+            <button id="btn-area-select-finish" class="select-tool-btn select-tool-btn-primary" type="button" title="구역 그리기 완료(점 3개 이상)" hidden>
+              구역 완료
+            </button>
+            <button id="btn-area-select-cancel" class="select-tool-btn" type="button" title="구역 그리기 취소" hidden>
+              취소
+            </button>
+            <button id="btn-area-review-done" class="select-tool-btn select-tool-btn-primary" type="button" title="제외 완료, 이 필지들로 확정" hidden>
+              선택 완료
+            </button>
+            <button id="btn-clear-all-parcels" class="select-tool-btn select-tool-btn-danger" type="button" title="선택한 대상지 전체 초기화">
+              초기화
+            </button>
+          </div>
+          <p class="select-tools-hint">지도 클릭: 필지 선택 · Shift+클릭: 추가/제외</p>
+
+          <p class="left-flow-hint" id="left-flow-hint">주소를 검색하고 지도에서 대상 필지를 선택하세요.</p>
+        </section>
+
+        <!-- 2026-09-10: 기존 분석 메뉴(건축물/도로/교통/지형/일조/조망/소음) 임시 초기화.
+             코드는 삭제하지 않았습니다 — 이 <section>에 hidden 속성만 추가한 것이라,
+             나중에 재사용하려면 아래 hidden 하나만 지우면 원래대로 돌아옵니다. -->
+        <section class="left-section" hidden>
+          <h2 class="left-section-title">분석 메뉴</h2>
+          <nav class="analysis-menu" id="analysis-menu">
+            <button class="menu-item active" type="button" data-section="parcel-info">
+              <span class="menu-item-label">대상지 기본정보</span>
+              <span class="menu-item-badge" data-badge="parcel-info"></span>
+            </button>
+            <button class="menu-item" type="button" data-section="building" disabled>
+              <span class="menu-item-label">주변 건축물</span>
+              <span class="menu-item-badge" data-badge="building"></span>
+            </button>
+            <button class="menu-item" type="button" data-section="boundary" disabled>
+              <span class="menu-item-label">도로·접도</span>
+              <span class="menu-item-badge" data-badge="boundary"></span>
+            </button>
+            <button class="menu-item" type="button" data-section="transit" disabled>
+              <span class="menu-item-label">교통·접근성</span>
+              <span class="menu-item-badge" data-badge="transit"></span>
+            </button>
+            <button class="menu-item" type="button" data-section="terrain" disabled>
+              <span class="menu-item-label">지형·경사</span>
+              <span class="menu-item-badge" data-badge="terrain"></span>
+            </button>
+            <button class="menu-item" type="button" data-section="shadow" disabled>
+              <span class="menu-item-label">일조·그림자</span>
+              <span class="menu-item-badge" data-badge="shadow"></span>
+            </button>
+            <button class="menu-item" type="button" data-section="visibility" disabled>
+              <span class="menu-item-label">조망·개방성</span>
+              <span class="menu-item-badge" data-badge="visibility"></span>
+            </button>
+            <button class="menu-item" type="button" data-section="environment" disabled>
+              <span class="menu-item-label">소음·통풍</span>
+              <span class="menu-item-badge" data-badge="environment"></span>
+            </button>
+          </nav>
+        </section>
+
+        <!-- 2026-09-10: 전체 UI 개편 — "지도 표시 설정"이 번잡하다는 피드백으로 숨김.
+             기본값(밝은 지도 등)이 이미 적당해서 평소엔 필요 없습니다. 코드는 그대로
+             남겨뒀으니 아래 hidden만 지우면 다시 씁니다. -->
+        <details class="left-section collapsible-settings" hidden>
+          <summary>지도 표시 설정</summary>
+          <div class="dev-section-title">배경지도</div>
+          <div id="basemap-options" class="basemap-options"></div>
+
+          <div class="dev-section-title">범례 위치</div>
+          <select id="legend-position-select">
+            <option value="bottom-left">좌측 하단</option>
+            <option value="bottom-right" selected>우측 하단</option>
+            <option value="hidden">숨김</option>
+          </select>
+
+          <div class="dev-section-title">발표 모드 표시 요소</div>
+          <label class="filter-label"><input type="checkbox" id="chk-show-legend" checked /> 범례</label>
+          <label class="filter-label"><input type="checkbox" id="chk-show-scale" checked /> 축척</label>
+          <label class="filter-label"><input type="checkbox" id="chk-show-north" checked /> 방위표</label>
+          <label class="filter-label"><input type="checkbox" id="chk-show-title" /> 제목</label>
+          <label class="filter-label"><input type="checkbox" id="chk-show-source" checked /> 출처 표기</label>
+          <input type="text" id="presentation-title-input" placeholder="제목(발표 모드용)" style="width:100%; margin-top:4px; padding:4px; font-size:12px;" />
+
+          <div class="dev-section-title">이미지 내보내기 비율</div>
+          <select id="export-ratio-select">
+            <option value="current">현재 화면</option>
+            <option value="16:9">16:9</option>
+            <option value="4:3">4:3</option>
+            <option value="a4-landscape">A4 가로</option>
+            <option value="a4-portrait">A4 세로</option>
+            <option value="1:1">정사각형</option>
+          </select>
+
+          <p class="panel-hint" id="map-display-hint"></p>
+
+          <div class="dev-section-title">지도 레이어</div>
+          <p class="panel-hint">이미 계산된 분석 결과를 지도에 표시할지만 켜고 끕니다.</p>
+        <p class="panel-hint">이미 계산된 분석 결과를 지도에 표시할지만 켜고 끕니다.</p>
+        <div id="layer-checkbox-list" class="layer-checkbox-list"></div>
+        <button id="btn-layers-all-off" class="radius-btn" type="button">모두 끄기</button>
+        </details>
+      </div>
+    </aside>
+
+    <!-- ============================================================ -->
+    <!-- STEP2: 개발검토 Workspace — 대상지 선택(STEP1) 화면과 완전히 분리된
+         별도 화면. 지도는 새로 만들지 않고 #map-container를 그대로 옮겨와
+         재사용합니다(js/dev-workspace.js). 기존 "사업성 및 사업내용" 카드의
+         내용(대상지 개요/토지가치/용적률·공공기여 계산/사업내용 요약)을 그대로
+         재사용해 탭 4개(대상지 현황/개발규모/사업유형/사업성 분석)에 나눠
+         담았습니다 — 계산 로직은 전혀 손대지 않았습니다. -->
+    <div id="dev-workspace" class="dev-workspace" hidden>
+      <header class="dw-header">
+        <button id="btn-dev-workspace-back" class="dw-back-btn" type="button">← 대상지 선택</button>
+        <div class="dw-brand">대상지 개발검토 <span>WORKSPACE</span></div>
+        <span class="dw-draft">검토 초안</span>
+        <button id="btn-dw-print" class="dw-print-btn" type="button">검토서 인쇄</button>
+      </header>
+
+      <div class="dw-layout">
+        <!-- 왼쪽은 도구 패널이 아니라 "검토서 목차"입니다 — 업무 순서가 곧 화면 순서. -->
+        <aside class="dw-aside">
+          <div class="dw-aside-label">검토 대상지</div>
+          <h2 class="dw-aside-title" id="dw-location">-</h2>
+          <p class="dw-aside-sub">
+            대지면적 <span id="dw-total-area">-</span> · 필지 <span id="dw-parcel-count">-</span>
+          </p>
+          <!-- 목차이자 진행 상태판. 각 단계의 현재 상태는 실제 값에서만 계산합니다
+               (js/dev-workspace.js의 renderReviewProgress). 값이 없으면 비워 둡니다. -->
+          <nav class="dw-nav" aria-label="검토 단계">
+            <a href="#dw-sec-site" data-section="site-overview" class="active">
+              <span>01</span> 대상지
+              <em class="dw-nav-state" data-progress="site"></em>
+            </a>
+            <a href="#dw-sec-program" data-section="business-type">
+              <span>02</span> 사업방식
+              <em class="dw-nav-state" data-progress="program"></em>
+            </a>
+            <a href="#dw-sec-op" data-section="capacity">
+              <span>03</span> 개발대안
+              <em class="dw-nav-state" data-progress="op"></em>
+            </a>
+            <a href="#dw-sec-conclusion" data-section="conclusion">
+              <span>04</span> 종합의견
+              <em class="dw-nav-state" data-progress="conclusion"></em>
+            </a>
+          </nav>
+          <div class="dw-aside-bottom">
+            <strong>네 단계로 검토 초안을 만듭니다.</strong>
+          </div>
+        </aside>
+
+        <main class="dw-main">
+          <div class="dw-page-heading">
+            <div class="dw-eyebrow">개발검토 초안</div>
+            <h1>이번 검토 요약</h1>
+          </div>
+
+          <!-- 들어오자마자 보는 곳. 대상지·확인된 것·남은 것·다음 행동만 담습니다.
+               내용은 js/dev-workspace.js가 실제 상태에서 계산해 채웁니다. -->
+          <div class="dw-summary" id="dw-summary"></div>
+
+          <!-- 01 대상지 현황 — 기존 "대상지 개요"+"토지가치" 블록을 그대로 씁니다.
+               지도는 새로 만들지 않고 #map-container를 이 슬롯으로 옮겨옵니다. -->
+          <section id="dw-sec-site" class="dw-section" data-tab-panel="site-overview">
+            <div class="dw-section-heading">
+              <div>
+                <h2><small>01</small> 대상지</h2>
+                <p>크기·용도지역과 이미 정해진 계획을 봅니다.</p>
+              </div>
+            </div>
+
+            <div class="dw-site-overview">
+              <div id="dev-workspace-map-slot" class="dev-workspace-map-slot"></div>
+              <div class="dw-site-data">
+                <h3 class="dw-block-title">대상지 개요</h3>
+                <dl class="feasibility-dl">
+                  <dt>선택 필지</dt><dd id="fs-parcel-count">-</dd>
+                  <dt>총 대지면적</dt><dd id="fs-total-area">-</dd>
+                  <dt>위치</dt><dd id="fs-location">-</dd>
+                </dl>
+                <details class="fs-jibun-details">
+                  <summary>지번 목록 보기</summary>
+                  <ul id="fs-jibun-list" class="fs-jibun-list"></ul>
+                </details>
+              </div>
+            </div>
+
+            <div class="dw-block">
+              <h3 class="dw-block-title">토지가치 <span class="dw-block-sub">개별공시지가 기준</span></h3>
+              <div class="fs-jiga-toggle">
+                <label><input type="radio" name="fs-jiga-mult" value="1" checked /> 공시지가 × 1</label>
+                <label><input type="radio" name="fs-jiga-mult" value="2" /> 공시지가 × 2</label>
+              </div>
+              <dl class="feasibility-dl">
+                <dt>토지가치 합계</dt><dd id="fs-land-value-total">-</dd>
+                <dt>평균 단가(㎡)</dt><dd id="fs-land-value-avg">-</dd>
+                <dt>고시일자</dt><dd id="fs-jiga-date">-</dd>
+              </dl>
+              <p id="fs-jiga-missing-note" class="panel-hint" hidden>
+                ※ 일부 필지는 공시지가 정보가 없어 합계에서 제외되었습니다.
+              </p>
+            </div>
+
+            <!-- 기존 계획 현황 — 이미 결정돼 있는 계획을 먼저 확인하는 자리입니다.
+                 아직 시스템에 연결된 자료가 없으므로 값을 만들어 내지 않고
+                 "미연결"로 명시합니다. 포함 여부가 확인되지 않았다는 이유로
+                 다른 제도를 배제하지도 않습니다. -->
+            <div class="dw-block" id="dw-existing-plan">
+              <h3 class="dw-block-title">기존 계획 <span class="dw-block-sub">지구단위계획구역</span></h3>
+              <div id="dw-plan-result"><p class="panel-hint">확인 중…</p></div>
+            </div>
+
+            <div class="dw-step-next">
+              <button type="button" class="dw-next-btn" data-goto="business-type">사업방식 검토로 이동 →</button>
+            </div>
+          </section>
+
+          <!-- 02 사업유형 검토 — js/dev-dashboard.js가 #dev-dashboard를 채웁니다.
+               상세 검토표(사업제도별 규칙 묶음)는 접어 두고 필요할 때 펼칩니다. -->
+          <section id="dw-sec-program" class="dw-section" data-tab-panel="business-type">
+            <div class="dw-section-heading">
+              <div>
+                <h2><small>02</small> 사업방식</h2>
+                <p>대상지 값과 사업별 대표요건을 나란히 비교합니다.</p>
+              </div>
+            </div>
+            <p class="brx-guide">대상지의 주요 도시계획 조건을 바탕으로 검토할 사업유형을 안내합니다. 실제 사업추진은 세부 계획 및 행정절차에 따라 달라질 수 있습니다.</p>
+            <div id="business-rule-explorer" class="business-rule-explorer" aria-live="polite"><p class="panel-hint">대상지 조건을 분석하고 있습니다.</p></div>
+            <details class="dw-details brx-legacy-details"><summary>기존 사업제도 검토 결과 보기</summary><div id="dev-dashboard" class="dev-dashboard"></div></details>
+            <div class="dw-step-next">
+              <button type="button" class="dw-next-btn" data-goto="capacity">만든 개발대안 비교하기 →</button>
+            </div>
+
+            <details class="dw-details" id="dw-bt-details">
+              <summary>모든 사업제도의 요건표·용적률표·공공기여표 한 번에 보기</summary>
+              <p class="panel-hint" id="business-type-hint">대상지를 선택하면 사업제도별 검토표가 표시됩니다.</p>
+              <div id="business-type-list" class="business-type-list"></div>
+            </details>
+          </section>
+
+          <!-- 03 개발대안 비교 — OP를 세로 카드가 아니라 가로 비교표로 봅니다.
+               값은 Rule Set에서 확인된 것만 채우고 나머지는 빈칸으로 둡니다. -->
+          <section id="dw-sec-op" class="dw-section" data-tab-panel="capacity">
+            <div class="dw-section-heading">
+              <div>
+                <h2><small>03</small> 개발대안</h2>
+                <p>도입용도와 조건에 따라 규모와 공공기여가 달라집니다.</p>
+              </div>
+              <button id="btn-op-add" class="dw-ghost-btn" type="button">+ OP 추가</button>
+            </div>
+            <!-- 다른 대상지의 검토가 남아 있을 때만 보입니다. 지우기는 사용자가 직접 누릅니다. -->
+            <div id="dw-review-banner" class="dw-review-banner" hidden></div>
+            <div class="dw-op-toolbar">
+              <span id="dw-op-count">OP 0개</span>
+              <span class="dw-op-toolbar-right">
+                <label><input type="checkbox" id="dw-op-diff-only" /> 차이가 있는 항목만</label>
+                <label><input type="checkbox" id="dw-op-show-detail" /> 용적률 상세 보기</label>
+              </span>
+            </div>
+            <div class="dw-table-scroll" id="op-list"></div>
+            <p id="dw-op-empty" class="dw-empty">
+              위 <strong>02 사업유형 검토</strong>에서 "이 사업제도로 개발대안 만들기"를 누르면 비교가 시작됩니다. "+ OP 추가"로 빈 대안을 직접 만들 수도 있습니다.
+            </p>
+            <!-- 모든 OP에 똑같이 해당하는 설명은 셀마다 반복하지 않고 여기 한 번만 적습니다. -->
+            <p class="dw-op-table-note" id="dw-op-table-note" hidden>
+              계산상 상한 용적률·검토 연면적은 <strong>참고 계산</strong>입니다 — 엑셀 원본과 대조하기 전이라 확정값이 아닙니다.
+              각 열의 <strong>조건·계산 근거</strong>를 누르면 그 OP의 입력과 계산 과정이 아래에 열립니다.
+            </p>
+
+            <div class="dw-step-next">
+              <button type="button" class="dw-next-btn" data-goto="conclusion">우선 검토 대안 정하고 의견 쓰기 →</button>
+            </div>
+
+            <details class="dw-glossary">
+              <summary>이 표의 용어</summary>
+              <dl>
+                <dt>용적률</dt><dd>대지면적 대비 건물 연면적의 비율. 200%면 대지의 2배를 지을 수 있다는 뜻입니다.</dd>
+                <dt>기준 용적률</dt><dd>조례가 용도지역별로 정해 둔 출발점.</dd>
+                <dt>허용 용적률</dt><dd>기준에 인센티브 항목을 더해 계획안마다 따로 산정하는 값.</dd>
+                <dt>규칙상 상한 용적률</dt><dd>제도가 정한 한도. 이 위로는 못 올라갑니다.</dd>
+                <dt>계산상 상한 용적률</dt><dd>허용 용적률에 공공기여 완화를 더해 <em>이 프로그램이 계산한</em> 값. 규칙상 상한과 다른 값입니다.</dd>
+                <dt>계획 용적률</dt><dd>검토를 위해 사용자가 잡은 가정치.</dd>
+                <dt>공공기여</dt><dd>용적률을 더 받는 대가로 토지·건축물·현금을 공공에 내놓는 것.</dd>
+                <dt>환산부지</dt><dd>건축물·현금 기여를 "땅 몇 ㎡에 해당하는가"로 바꾼 값. 수단이 달라도 같은 단위로 비교하려고 씁니다.</dd>
+                <dt>총 공공기여율</dt><dd>환산부지 합계 ÷ 구역면적.</dd>
+                <dt>연면적</dt><dd>건물 각 층 바닥면적의 합계.</dd>
+              </dl>
+            </details>
+
+            <!-- OP 하나의 '조건·계산 근거'. 예전의 독립 섹션('용적률·공공기여 계산')을
+                 그대로 옮겨온 것이라 입력칸·결과·미산정 사유의 id가 모두 동일합니다.
+                 한 번에 하나의 OP만 편집하며, 어떤 OP인지 머리말에 명시합니다. -->
+            <div id="dw-op-detail" class="dw-op-detail" hidden>
+              <div class="dw-op-detail-head">
+                <div>
+                  <span class="dw-op-detail-label">조건 · 계산 근거</span>
+                  <h3 id="dw-op-detail-title">OP</h3>
+                  <p id="dw-op-detail-sub" class="dw-op-detail-sub"></p>
+                </div>
+                <button id="btn-op-detail-close" class="dw-ghost-btn" type="button">닫기</button>
+              </div>
+
+              <p id="dw-op-detail-profile" class="dw-op-profile"></p>
+              <p id="dw-op-detail-stale" class="dw-op-stale" hidden></p>
+
+              <div class="dw-op-detail-body">
+                <h4 class="fs-sub-title">용적률</h4>
+                <div class="fs-far-inputs">
+                  <label>기준 용적률(%)<input type="number" id="fs-far-base" min="0" step="1" placeholder="예: 200" /></label>
+                  <label>계획한 허용 용적률(%)<input type="number" id="fs-far-allowed" min="0" step="1" placeholder="계획안이 채택하는 허용용적률" /></label>
+                </div>
+                <!-- 8.9단계: 용도지역을 자동 조회해 기준 용적률을 채워주되, 참고표
+                     (backend/data/seoul_far_by_zone.json) 기준이라 재확인이 필요함을 항상 표시 -->
+                <p id="fs-zone-note" class="panel-hint fs-zone-note" hidden></p>
+                <!-- 8.12단계: 이 OP의 사업유형(business_type_id)이 business_types.json의
+                     contribution_calc_profile_link에서 "연결 가능"이 아니면 경고합니다 —
+                     일반 기부채납 산식과 사업유형 고유 산식을 한 결과처럼 섞어 보여주지
+                     않기 위한 최소 화면 반영(대규모 개편 아님). -->
+                <p id="fs-calc-link-warning" class="panel-hint fs-calc-link-warning" hidden></p>
+
+                <details class="dw-op-fold" open>
+                  <summary>공공기여 계산 프로필(공식 기준 필수 선택)</summary>
+                  <div class="fs-far-inputs">
+                    <label>계산 프로필
+                      <select id="fs-calc-profile">
+                        <option value="">선택하세요 — 선택 전에는 상한용적률을 계산하지 않습니다</option>
+                      </select>
+                    </label>
+                  </div>
+                  <p id="fs-profile-source" class="panel-hint">
+                    ※ 사업유형(지구단위계획/도시정비형/주택정비형/재정비촉진계획)에 맞는 프로필을 고르면
+                    토지·현금 계수와 적용 조문이 여기 표시됩니다. 건축물계수는 시설별로 아래에서 따로
+                    고릅니다(하나의 평균계수로 뭉개지 않음 — 별표1 참고). 역세권활성화사업 등 별도
+                    운영기준이 있는 사업은 최소 공공기여율·완화조건을 그 운영기준에서 따르고, 이 표는
+                    토지·건축물·현금 환산과 상한용적률 인센티브 산식에만 "준용" 여부를 사수 확인 후
+                    판단하세요(일반 기부채납 산식을 역세권 사업에 적용할 수 있다는 근거가 확인된 경우에만
+                    프로필을 연결하세요).
+                  </p>
+                </details>
+
+                <details class="dw-op-fold" open>
+                  <summary>토지·현금 기부채납 입력</summary>
+                  <div class="fs-far-inputs">
+                    <label>토지 기부채납 면적(㎡)<input type="number" id="fs-give-land-area" min="0" step="1" placeholder="예: 500" /></label>
+                    <label>현금 기부채납액(원)<input type="number" id="fs-give-cash" min="0" step="1" placeholder="예: 1000000000" /></label>
+                  </div>
+                </details>
+
+                <details class="dw-op-fold" open>
+                  <summary>건축물 기부채납 시설(시설별로 계수를 따로 적용)</summary>
+                  <p class="panel-hint">
+                    ※ 시설마다 계수가 다를 수 있습니다(운영기준 3-1-4., 별표1 예시: 공공청사 0.7 +
+                    공공임대주택 1.0을 각각 계산해 합산). 한 프로필의 평균값으로 뭉개지 않고, 시설을
+                    하나씩 추가해 각자의 지상·지하연면적·대지지분·단가·계수를 입력하세요. 대지지분은
+                    총 계획연면적 비율로 자동 산출하지 않습니다(1-3-3./2-2-2. — 계획 단계 예측값을
+                    직접 입력하고 건축허가 시점에 재확인).
+                  </p>
+                  <div id="fs-bldg-facilities" class="fs-facility-list"></div>
+                  <button type="button" id="btn-fs-add-facility" class="dw-ghost-btn">+ 건축물 기부채납 시설 추가</button>
+                </details>
+
+                <details class="fs-advanced-details dw-op-fold">
+                  <summary>부지가액 · 가중치</summary>
+                  <div class="fs-far-inputs">
+                    <label>부지가액 산정방식
+                      <select id="fs-site-value-method">
+                        <option value="">선택하세요 — 선택 전에는 건축물·현금 환산을 계산하지 않습니다</option>
+                        <option value="comparable">유사 실거래사례 3건 이상 면적가중 평균(3-4-1.)</option>
+                        <option value="double_jiga">참고 사례 없음 — 개별공시지가 2배(3-4-1.다.)</option>
+                        <option value="appraisal">감정평가(3-4-2./3-4-3.)</option>
+                        <option value="special">사업유형별 별도 기준</option>
+                      </select>
+                    </label>
+                    <label>부지가액(원/㎡)<input type="number" id="fs-site-value" min="0" step="1" placeholder="선택한 방식으로 산정한 값을 입력(2배 방식은 자동 계산 가능)" /></label>
+                    <label>토지 가중치<input type="number" id="fs-weight-land" min="0" step="0.0001" placeholder="제공부지 허용용적률 ÷ 사업부지 허용용적률" /></label>
+                    <label>산식 적용 허용(기준)용적률(%)<input type="number" id="fs-far-formula" min="0" step="1" placeholder="사업성보정계수 등 제외한 산식용 기준값" /></label>
+                  </div>
+                  <p id="fs-site-value-hint" class="panel-hint">
+                    ※ 방식을 고르지 않으면 건축물·현금 환산과 계산상 상한용적률을 계산하지 않습니다.
+                    "개별공시지가 2배"를 고르고 부지가액을 비워두면 선택 필지의 평균 개별공시지가×2를
+                    참고값으로 자동 채웁니다(운영기준이 정한 방식을 사용자가 명시적으로 선택한 경우에만—
+                    자동 기본값이 아닙니다). 다른 방식은 산정값을 직접 입력하세요. 토지계수 1.3은
+                    선택한 프로필에서 고정 적용됩니다.
+                  </p>
+                </details>
+
+                <h4 class="fs-sub-title">계산 결과</h4>
+                <dl class="feasibility-dl">
+                  <dt>토지 기여율</dt><dd id="fs-contrib-land-pct">-</dd>
+                  <dt>건축물 기여율</dt><dd id="fs-contrib-bldg-pct">-</dd>
+                  <dt>현금 기여율</dt><dd id="fs-contrib-cash-pct">-</dd>
+                  <dt>총 공공기여율</dt><dd id="fs-contrib-total-pct">-</dd>
+                  <dt>완화 용적률</dt><dd id="fs-far-relief">-</dd>
+                  <dt>계산상 상한 용적률</dt><dd id="fs-far-cap">-</dd>
+                  <dt>기준 연면적</dt><dd id="fs-floor-base">-</dd>
+                  <dt>계산상 상한 연면적</dt><dd id="fs-floor-cap">-</dd>
+                  <dt>증가 연면적(기준→상한)</dt><dd id="fs-floor-increase">-</dd>
+                </dl>
+                <!-- 왜 "미산정"인지를 그대로 적습니다. 빈칸이 "해당 없음"으로 읽히지
+                     않도록, 빠진 입력을 이름으로 지목합니다. -->
+                <ul id="fs-unmet-reasons" class="fs-unmet-reasons" hidden></ul>
+                <details class="dw-op-fold">
+                  <summary>계산식과 알려진 차이</summary>
+                  <p class="panel-hint">
+                    계산상 상한 용적률 = 계획한 허용용적률 + 산식 적용 허용(기준)용적률 × (1.3 × 토지 가중치 × α토지 +
+                    Σ(시설별 건축물계수 × α건축물_시설) + 현금계수 × α현금) — 「공공시설등 기부채납 용적률
+                    인센티브 운영기준」 3-1-1./3-1-4. (2025-03-18 일부개정)를 그대로 옮긴 식입니다. 건축물
+                    항목은 시설별로 계수를 따로 적용해 합산합니다(하나의 평균계수로 뭉개지 않음 — 별표1
+                    예시: 공공청사 0.7 + 공공임대주택 1.0). α의 분모는 <strong>공공시설 등 부지제공 후
+                    대지면적</strong>(= 구역면적 − 토지 기부채납 − 건축물 기부채납 대지지분 합, 원문 1-3-3.)이고,
+                    토지·현금계수는 위에서 선택한 계산 프로필에서 가져옵니다. <strong>규칙상 상한(제도가 정한
+                    한도)과는 다른 값</strong>이며, 부지가액 산정방식을 선택하지 않거나 시설별 단가·계수를 입력하지
+                    않으면(고정 기본값 없음) 미산정으로 남습니다. 역세권활성화사업 등 1-2-2.의 특별기준 사업에 이
+                    산식을 그대로 준용해도 되는지는 아직 확인되지 않았습니다 — docs/기부채납_공식기준_대조보고_20260918.md,
+                    docs/기부채납_계산프로필_적용_20260918.md 참고.
+                  </p>
+                </details>
+
+                <div class="dw-block-head">
+                  <h4 class="fs-sub-title">사업내용 요약</h4>
+                  <button id="btn-fs-copy-summary" class="dw-ghost-btn" type="button">복사</button>
+                </div>
+                <textarea id="fs-summary-text" class="fs-summary-textarea" readonly></textarea>
+              </div>
+            </div>
+          </section>
+
+          <!-- 04 용적률·공공기여 계산 — 기존 계산 블록 그대로. 계산식은 손대지 않았습니다. -->
+          <!-- 04 종합의견 — 우선 검토 대안 선택과 남은 확인사항. -->
+          <section id="dw-sec-conclusion" class="dw-section" data-tab-panel="conclusion">
+            <div class="dw-section-heading">
+              <div><h2><small>04</small> 종합의견</h2></div>
+            </div>
+            <div class="dw-conclusion-grid">
+              <div>
+                <p class="dw-part-label">1. 우선 검토 대안</p>
+                <p id="dw-preferred" class="dw-preferred">비교표에서 우선 검토할 OP를 선택하세요.</p>
+                <div id="dw-preferred-detail" class="dw-preferred-detail"></div>
+
+                <p class="dw-part-label">2. 이 대안을 고른 이유</p>
+                <div id="dw-preferred-auto" class="dw-preferred-auto"></div>
+                <label class="dw-note-label" for="dw-review-note">직접 쓰는 검토 의견</label>
+                <textarea id="dw-review-note" placeholder="사업 목적, 이 대안을 우선 검토하는 이유, 추가 협의사항 등을 남기세요."></textarea>
+                <span class="dw-note-state">
+                  작성한 내용은 대상지 선택 화면을 오가도 그대로 남습니다.
+                  다만 <b>브라우저를 닫거나 새로고침하면 사라집니다</b> — 검토서를 인쇄하거나 복사해 두세요.
+                </span>
+              </div>
+              <div>
+                <p class="dw-part-label">3. 다음 확인사항</p>
+                <div class="dw-followup-group">
+                  <p class="dw-followup-group-title">대상지 공통</p>
+                  <div id="dw-followups-site" class="dw-followups"></div>
+                </div>
+                <div class="dw-followup-group">
+                  <p class="dw-followup-group-title" id="dw-followups-op-title">선택한 OP 기준</p>
+                  <div id="dw-followups" class="dw-followups"></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div class="dw-step-next">
+            <button type="button" class="dw-next-btn" id="btn-dw-print-bottom">검토 내용 인쇄 →</button>
+          </div>
+
+          <footer class="dw-footer-bar">
+            검토 초안 · 미확인 항목을 포함합니다.<span>도시개발 검토</span>
+          </footer>
+        </main>
+      </div>
+    </div>
+
+    <!-- 중앙: 지도 -->
+    <div class="map-container" id="map-container">
+      <!-- 8.3단계(UI): 지도 표현 컨트롤 -->
+      <div id="map-display-toolbar" class="map-display-toolbar ui-only">
+        <!-- 2026-09-10: "발표 모드"/"이미지 내보내기"가 번잡하다는 피드백으로 숨김.
+             hidden 속성만 추가한 것이라 코드는 그대로 남아있습니다. -->
+        <button id="btn-presentation-toggle" class="map-toolbar-btn" type="button" title="발표 모드 전환" hidden>
+          발표 모드
+        </button>
+        <button id="btn-export-image" class="map-toolbar-btn" type="button" title="현재 지도를 PNG로 내보내기" hidden>
+          이미지 내보내기
+        </button>
+        <button id="btn-zoning-toggle" class="map-toolbar-btn" type="button" title="용도지역 색상 표시(지적편집도)">
+          지적편집도
+        </button>
+      </div>
+
+      <!-- 8.6단계: 구역 그리기/검토 중 안내 -->
+      <div id="area-select-hint" class="area-select-hint ui-only" hidden></div>
+
+      <!-- 8.4단계: 지적편집도(용도지역) 범례 — 켜져 있을 때만 지도 위에 표시 -->
+      <div id="zoning-legend" class="zoning-legend ui-only" hidden></div>
+
+      <!-- 발표 모드 전용: 제목 -->
+      <div id="presentation-title" class="presentation-title" hidden></div>
+
+      <!-- 지도 위 범례(선택한 위치에 표시, 활성 레이어에 맞춰 자동 갱신) -->
+      <div id="map-legend-overlay" class="map-legend-overlay" data-position="bottom-right" hidden>
+        <div id="map-legend-overlay-title" class="map-legend-overlay-title"></div>
+        <div id="map-legend-overlay-body"></div>
+      </div>
+
+      <!-- 방위표 (발표 모드에서 선택적으로 표시) -->
+      <div id="map-north-arrow" class="map-north-arrow" hidden>N ↑</div>
+
+      <!-- 출처 표기 (발표 모드 내보내기용, 지도 제공자 저작권 표기는 항상 유지) -->
+      <div id="map-source-note" class="map-source-note" hidden>출처: OpenStreetMap contributors · 국토교통부 VWorld</div>
+
+      <main id="map"></main>
+    </div>
+
+    <!-- 오른쪽: 선택한 분석 메뉴의 결과만 표시 (지도 위에 떠 있는 카드) -->
+    <aside class="right-panel" id="right-panel">
+      <div class="right-panel-scroll">
+        <p id="right-panel-empty-hint" class="panel-hint right-panel-empty-hint">
+          대상지를 선택하면 이곳에 정보가 표시됩니다.
+        </p>
+
+        <div class="result-section" data-section="parcel-info">
+          <h2>대상지 기본정보</h2>
+        <div id="info-panel" class="info-panel">
+          <p id="info-empty-message" class="empty-message">
+            지도에서 필지를 클릭하거나, 주소를 검색해주세요.
+          </p>
+
+          <!-- 필지를 클릭했을 때 표시되는 정보 (1단계) — 요청사항: 주소/면적만 남기고 나머지 삭제 -->
+          <dl id="info-panel-parcel" hidden>
+            <dt>주소</dt>
+            <dd id="panel-address">-</dd>
+
+            <dt>면적</dt>
+            <dd id="panel-area">-</dd>
+          </dl>
+
+          <!-- 검색 결과를 선택했을 때 표시되는 정보 (2단계, 실제 필지 조회 전 임시 상태) —
+               아직 면적을 모르는 단계라 주소만 표시 -->
+          <dl id="info-panel-search" hidden>
+            <dt>주소</dt>
+            <dd id="search-panel-title">-</dd>
+          </dl>
+
+          <p id="search-panel-note" class="panel-hint search-note" hidden>
+            ※ 아직 실제 필지 경계 정보를 불러오지 않았습니다. 지적도·PNU 연동은 다음 단계에서 진행됩니다.
+          </p>
+
+          <!-- 3단계: 실제 필지 조회 중/실패 상태 안내 (검색·필지 선택과 별개로 뜰 수 있음) -->
+          <div id="parcel-status" class="search-status" hidden></div>
+
+          <!-- 실제 VWorld 필지가 조회되었을 때 표시되는 정보 (3단계) —
+               요청사항: 주소/면적만 남기고 나머지(PNU/지번/본번부번/중심좌표/데이터셋) 삭제 -->
+          <dl id="info-panel-real-parcel" hidden>
+            <dt>주소</dt>
+            <dd id="real-parcel-address">-</dd>
+
+            <dt>면적</dt>
+            <dd id="real-parcel-area">-</dd>
+          </dl>
+
+          <p id="real-parcel-note" class="panel-hint search-note" hidden>
+            ※ 본 결과는 브이월드 공간정보를 기반으로 한 기초 조회 결과입니다.
+          </p>
+        </div>
+        </div>
+
+        <div class="result-section" data-section="building" hidden>
+          <h2>주변 건축물</h2>
+          <details class="analysis-sub-settings">
+            <summary>분석 범위</summary>
+        <p class="panel-hint">필지 또는 검색 위치를 먼저 선택한 뒤 버튼을 눌러주세요.</p>
+        <div class="radius-buttons">
+          <button id="btn-radius-500" class="radius-btn" type="button">
+            반경 500m
+          </button>
+          <button id="btn-radius-1000" class="radius-btn" type="button">
+            반경 1km
+          </button>
+        </div>
+          </details>
+        <p class="panel-hint" id="building-analysis-hint">실제 필지를 선택하면 분석할 수 있습니다.</p>
+
+        <button id="btn-building-analysis" class="radius-btn building-analysis-btn" type="button" disabled>
+          주변 500m 건축물 분석
+        </button>
+
+        <div id="building-status" class="search-status" hidden></div>
+
+        <div id="building-layer-switch" class="building-layer-switch" hidden>
+          <button id="btn-layer-age" class="layer-toggle-btn active" type="button" data-theme="age">노후도</button>
+          <button id="btn-layer-use" class="layer-toggle-btn" type="button" data-theme="use">용도</button>
+          <button id="btn-layer-floors" class="layer-toggle-btn" type="button" data-theme="floors">층수</button>
+          <button id="btn-layer-height" class="layer-toggle-btn" type="button" data-theme="height">높이</button>
+          <button id="btn-layer-gfa" class="layer-toggle-btn" type="button" data-theme="gfa">연면적</button>
+          <button id="btn-layer-bcr" class="layer-toggle-btn" type="button" data-theme="bcr">건폐율</button>
+          <button id="btn-layer-far" class="layer-toggle-btn" type="button" data-theme="far">용적률</button>
+        </div>
+        <p id="building-theme-disabled-reason" class="panel-hint" hidden></p>
+
+        <div id="building-legend" class="building-legend" hidden></div>
+
+        <div id="building-summary" class="building-summary" hidden>
+          <dl id="summary-core"></dl>
+          <dl id="summary-theme"></dl>
+          <dl id="summary-housing"></dl>
+          <p id="building-warnings" class="panel-hint" hidden></p>
+          <p class="panel-hint building-disclaimer">
+            ※ 본 노후도는 사용승인일을 기준으로 산출한 건축물 연령 지표이며, 실제 구조
+            안전성·균열·유지관리 상태 또는 안전등급을 의미하지 않습니다.
+          </p>
+        </div>
+
+        <!-- 5.5단계: QGIS용 GeoPackage 내보내기 -->
+        <button id="btn-export-qgis" class="radius-btn building-analysis-btn" type="button" disabled hidden>
+          QGIS용 파일 다운로드
+        </button>
+        <div id="export-status" class="search-status" hidden></div>
+      <section class="panel-card" id="building-filter-card" hidden>
+        <h2>저층·노후·저밀 조건 검색</h2>
+
+        <div class="filter-row">
+          <label class="filter-label">
+            <input type="checkbox" id="filter-age-enable" />
+            노후도
+          </label>
+          <select id="filter-age-value" class="filter-select">
+            <option value="20">20년 이상</option>
+            <option value="30" selected>30년 이상</option>
+            <option value="40">40년 이상</option>
+          </select>
+        </div>
+
+        <div class="filter-row">
+          <label class="filter-label">
+            <input type="checkbox" id="filter-floors-enable" />
+            층수
+          </label>
+          <select id="filter-floors-value" class="filter-select">
+            <option value="2">2층 이하</option>
+            <option value="3" selected>3층 이하</option>
+            <option value="5">5층 이하</option>
+          </select>
+        </div>
+
+        <div class="filter-row">
+          <label class="filter-label">
+            <input type="checkbox" id="filter-far-enable" />
+            용적률
+          </label>
+          <input type="number" id="filter-far-value" class="filter-number" placeholder="예: 200" min="0" />
+          <span class="filter-unit">% 이하</span>
+        </div>
+
+        <div class="filter-row">
+          <label class="filter-label">
+            <input type="checkbox" id="filter-gfa-enable" />
+            연면적
+          </label>
+          <input type="number" id="filter-gfa-value" class="filter-number" placeholder="예: 1000" min="0" />
+          <span class="filter-unit">㎡ 이하</span>
+        </div>
+
+        <div class="filter-mode-row">
+          <label><input type="radio" name="filter-mode" value="and" checked /> 모든 조건 충족(AND)</label>
+          <label><input type="radio" name="filter-mode" value="or" /> 하나 이상 충족(OR)</label>
+        </div>
+
+        <div class="radius-buttons">
+          <button id="btn-filter-apply" class="radius-btn" type="button">필터 적용</button>
+          <button id="btn-filter-reset" class="radius-btn" type="button">필터 해제</button>
+        </div>
+
+        <div id="filter-result" class="search-status" hidden></div>
+
+        <p class="panel-hint building-disclaimer">
+          이 결과는 사용자가 설정한 물리적 조건에 부합하는 건축물을 탐색하기 위한 것이며,
+          개발·정비 가능성에 대한 법적 또는 사업적 판정이 아닙니다.
+        </p>
+      </section>
+      <section class="panel-card" id="building-detail-card" hidden>
+        <h2>선택한 건물 정보</h2>
+        <div id="building-detail-status" class="search-status" hidden></div>
+        <dl id="building-detail-body">
+          <dt>건물명/동</dt>
+          <dd id="detail-name">-</dd>
+          <dt>주소</dt>
+          <dd id="detail-address">-</dd>
+          <dt>사용승인일/연령</dt>
+          <dd id="detail-age">-</dd>
+          <dt>대표 용도</dt>
+          <dd id="detail-use">-</dd>
+          <dt>구조</dt>
+          <dd id="detail-structure">-</dd>
+          <dt>지상/지하 층수</dt>
+          <dd id="detail-floors">-</dd>
+          <dt>높이</dt>
+          <dd id="detail-height">-</dd>
+          <dt>대지면적</dt>
+          <dd id="detail-site-area">-</dd>
+          <dt>건축면적</dt>
+          <dd id="detail-building-area">-</dd>
+          <dt>연면적</dt>
+          <dd id="detail-floor-area">-</dd>
+          <dt>건폐율</dt>
+          <dd id="detail-bcr">-</dd>
+          <dt>용적률</dt>
+          <dd id="detail-far">-</dd>
+          <dt>세대수/가구수</dt>
+          <dd id="detail-households">-</dd>
+          <dt>주차대수</dt>
+          <dd id="detail-parking">-</dd>
+          <dt>동 특정 여부</dt>
+          <dd id="detail-match-status">-</dd>
+          <dt>데이터 출처</dt>
+          <dd id="detail-source">-</dd>
+        </dl>
+        <ul id="building-detail-candidates" class="search-results" hidden></ul>
+      </section>
+        </div>
+
+        <div class="result-section" data-section="boundary" hidden>
+          <h2>도로·접도</h2>
+        <p class="panel-hint" id="boundary-analysis-hint">실제 필지를 선택하면 분석할 수 있습니다.</p>
+
+        <button id="btn-boundary-analysis" class="radius-btn building-analysis-btn" type="button" disabled>
+          경계·접도 분석
+        </button>
+
+        <div id="boundary-status" class="search-status" hidden></div>
+
+        <div id="boundary-summary" class="building-summary" hidden>
+          <div id="boundary-entrance-list" class="boundary-entrance-list"></div>
+          <div id="boundary-list" class="boundary-list"></div>
+          <p id="boundary-warnings" class="panel-hint" hidden></p>
+          <p class="panel-hint building-disclaimer">
+            ※ 이 결과는 건축 설계 초기 검토를 지원하는 자동 판단이며, 법적 접도 요건이나
+            실제 차량·보행 진입 가능 여부를 확정하지 않습니다. 도로 판정은 지번 표기(끝 글자)로
+            추정한 것이라 "추정 도로 접면"이며, 진입구 후보는 모두 검토가 필요한 제안입니다.
+          </p>
+        </div>
+        </div>
+
+        <div class="result-section" data-section="transit" hidden>
+          <h2>교통·접근성</h2>
+        <p class="panel-hint" id="transit-analysis-hint">실제 필지를 선택하면 분석할 수 있습니다.</p>
+
+        <button id="btn-transit-analysis" class="radius-btn building-analysis-btn" type="button" disabled>
+          지하철 접근성 분석
+        </button>
+
+        <div id="transit-status" class="search-status" hidden></div>
+
+        <div id="transit-summary" class="building-summary" hidden>
+          <dl>
+            <dt>가장 가까운 역</dt>
+            <dd id="transit-nearest-station">-</dd>
+            <dt>거리</dt>
+            <dd id="transit-nearest-dist">-</dd>
+            <dt>해당 역 노선</dt>
+            <dd id="transit-nearest-lines">-</dd>
+            <dt>500m 내 역 수</dt>
+            <dd id="transit-count-500">-</dd>
+            <dt>1km 내 역 수</dt>
+            <dd id="transit-count-1km">-</dd>
+            <dt>500m 내 이용 가능 노선 수</dt>
+            <dd id="transit-line-count-500">-</dd>
+            <dt>1km 내 이용 가능 노선 수</dt>
+            <dd id="transit-line-count-1km">-</dd>
+          </dl>
+          <p id="transit-warnings" class="panel-hint" hidden></p>
+          <p class="panel-hint building-disclaimer">
+            ※ 보행 경로가 아닌 직선거리 기준이며, 지하철 출입구 개별 좌표가 아니라 역
+            중심좌표를 사용합니다. 버스정류장 정보는 이번 단계에 포함되지 않았습니다.
+          </p>
+        </div>
+        </div>
+
+        <div class="result-section" data-section="terrain" hidden>
+          <h2>지형·경사</h2>
+        <p class="panel-hint" id="terrain-analysis-hint">실제 필지를 선택하면 분석할 수 있습니다.</p>
+
+        <div class="shadow-time-controls">
+          <label style="font-size:12px; display:flex; align-items:center; gap:4px;">
+            분석범위
+            <select id="terrain-range-select" style="width:90px;">
+              <option value="100">필지+100m</option>
+              <option value="250" selected>필지+250m</option>
+              <option value="500">필지+500m</option>
+            </select>
+          </label>
+          <label style="font-size:12px; display:flex; align-items:center; gap:4px;">
+            격자간격(m)
+            <input type="number" id="terrain-spacing-input" value="5" min="2" max="20" step="1" style="width:60px;" />
+          </label>
+        </div>
+
+        <button id="btn-terrain-analysis" class="radius-btn building-analysis-btn" type="button" disabled>
+          지형·표고 분석
+        </button>
+
+        <div id="terrain-status" class="search-status" hidden></div>
+
+        <div id="terrain-summary" class="building-summary" hidden>
+          <div class="building-layer-switch">
+            <button id="btn-terrain-mode-elevation" class="layer-toggle-btn active" type="button">표고 색상도</button>
+            <button id="btn-terrain-mode-slope" class="layer-toggle-btn" type="button">경사 구분</button>
+          </div>
+
+          <div id="terrain-legend" class="building-legend"></div>
+
+          <dl>
+            <dt>표고 범위</dt>
+            <dd id="terrain-elevation-range">-</dd>
+            <dt>최대 고저차</dt>
+            <dd id="terrain-elevation-diff">-</dd>
+            <dt>평균/최대 경사</dt>
+            <dd id="terrain-slope-info">-</dd>
+            <dt>주 경사 방향</dt>
+            <dd id="terrain-slope-direction">-</dd>
+            <dt>지형 신뢰도</dt>
+            <dd id="terrain-confidence">-</dd>
+          </dl>
+
+          <p id="terrain-design-sentence" class="boundary-item"></p>
+
+          <div id="terrain-boundary-sentences" class="boundary-list"></div>
+
+          <p id="terrain-warnings" class="panel-hint" hidden></p>
+          <p class="panel-hint building-disclaimer">
+            ※ 이 결과는 정밀 측량·토목설계를 대체하지 않으며, 등고선 보간 기반 참고용
+            분석입니다. 등고선 간격 5m, 점 간격 10m로 솎아낸 데이터를 사용하며, 절토·성토량은
+            계산하지 않고 가능성만 표시합니다. 도로 레벨은 실측이 아니라 등고선에서 추출한
+            추정값입니다.
+          </p>
+        </div>
+        </div>
+
+        <div class="result-section" data-section="shadow" hidden>
+          <h2>일조·그림자</h2>
+        <p class="panel-hint" id="shadow-analysis-hint">실제 필지를 선택하면 분석할 수 있습니다.</p>
+
+        <button id="btn-shadow-analysis" class="radius-btn building-analysis-btn" type="button" disabled>
+          일조·그림자 분석
+        </button>
+
+        <div id="shadow-status" class="search-status" hidden></div>
+
+        <div id="shadow-summary" class="building-summary" hidden>
+          <div class="shadow-time-controls">
+            <select id="shadow-season-select">
+              <option value="spring_equinox">춘분 (3/21)</option>
+              <option value="summer_solstice">하지 (6/21)</option>
+              <option value="autumn_equinox">추분 (9/23)</option>
+              <option value="winter_solstice" selected>동지 (12/21)</option>
+            </select>
+            <select id="shadow-time-select">
+              <option value="09:00">09:00</option>
+              <option value="12:00" selected>12:00</option>
+              <option value="15:00">15:00</option>
+            </select>
+          </div>
+
+          <div class="building-layer-switch">
+            <button id="btn-shadow-mode-instant" class="layer-toggle-btn active" type="button">순간 그림자</button>
+            <button id="btn-shadow-mode-heatmap" class="layer-toggle-btn" type="button">일조시간 히트맵</button>
+          </div>
+
+          <div id="shadow-legend" class="building-legend"></div>
+
+          <dl>
+            <dt>현재 표시 시각 태양</dt>
+            <dd id="shadow-sun-info">-</dd>
+            <dt>분석 그리드</dt>
+            <dd id="shadow-grid-info">-</dd>
+            <dt>주변 건물 높이 확보</dt>
+            <dd id="shadow-height-info">-</dd>
+          </dl>
+
+          <div id="shadow-region-sentences" class="boundary-list"></div>
+
+          <p id="shadow-warnings" class="panel-hint" hidden></p>
+          <p class="panel-hint building-disclaimer">
+            ※ 이 결과는 법적 일조권 판정이 아니라 설계 초기 검토(배치·중정·개구부 방향
+            결정)를 위한 분석입니다. 분석 대상은 신축 건물이 아니라 현재 주변 건물이
+            대상지에 만드는 그림자입니다. 건물 높이 누락·형상 단순화로 오차가 있을 수 있습니다.
+          </p>
+        </div>
+        </div>
+
+        <div class="result-section" data-section="visibility" hidden>
+          <h2>조망·개방성</h2>
+        <p class="panel-hint" id="visibility-analysis-hint">실제 필지를 선택하면 분석할 수 있습니다.</p>
+
+        <div class="shadow-time-controls">
+          <label style="font-size:12px; display:flex; align-items:center; gap:4px;">
+            방위각 간격
+            <select id="visibility-angle-select" style="width:70px;">
+              <option value="10">10도</option>
+              <option value="5" selected>5도</option>
+              <option value="2">2도</option>
+              <option value="1">1도</option>
+            </select>
+          </label>
+        </div>
+
+        <button id="btn-visibility-user-point" class="radius-btn" type="button" disabled>
+          지도에서 관찰점 직접 선택
+        </button>
+
+        <button id="btn-visibility-analysis" class="radius-btn building-analysis-btn" type="button" disabled>
+          조망·시야 분석
+        </button>
+
+        <div id="visibility-status" class="search-status" hidden></div>
+
+        <div id="visibility-summary" class="building-summary" hidden>
+          <div class="shadow-time-controls">
+            <select id="visibility-viewpoint-select"></select>
+            <select id="visibility-height-select">
+              <option value="1.5" selected>보행자(1.5m)</option>
+              <option value="6">저층(가상, 6m)</option>
+              <option value="15">중층(가상, 15m)</option>
+              <option value="30">상층(가상, 30m)</option>
+            </select>
+          </div>
+
+          <div id="visibility-legend" class="building-legend"></div>
+
+          <div id="visibility-radar-chart" style="display:flex; justify-content:center; margin: 8px 0;"></div>
+
+          <dl>
+            <dt>이 관찰점 개방 방향 비율</dt>
+            <dd id="visibility-open-ratio">-</dd>
+            <dt>가장 좋은 방향</dt>
+            <dd id="visibility-best-direction">-</dd>
+          </dl>
+
+          <div id="visibility-sentences" class="boundary-list"></div>
+          <div id="visibility-insights" class="boundary-list"></div>
+
+          <p id="visibility-warnings" class="panel-hint" hidden></p>
+          <p class="panel-hint building-disclaimer">
+            ※ 건물 형상·높이 기반 2D 평면 시야 분석이며, 실내 조망이나 3D 시뮬레이션·경관
+            심의 결과가 아닙니다. 나무·간판·옹벽 등은 반영되지 않고, 공원·하천·산·랜드마크
+            데이터는 확인된 것이 없어 이번 단계에 포함하지 않았습니다. 분석 반경(500m) 밖은
+            "열림"이 아니라 "범위 내 차폐물 없음"으로 표현합니다.
+          </p>
+        </div>
+        </div>
+
+        <div class="result-section" data-section="environment" hidden>
+          <h2>소음·통풍</h2>
+        <p class="panel-hint" id="environment-analysis-hint">실제 필지를 선택하면 분석할 수 있습니다.</p>
+
+        <button id="btn-environment-analysis" class="radius-btn building-analysis-btn" type="button" disabled>
+          소음·통풍 분석
+        </button>
+
+        <div id="environment-status" class="search-status" hidden></div>
+
+        <div id="environment-summary" class="building-summary" hidden>
+          <div class="building-layer-switch">
+            <button id="btn-environment-mode-noise" class="layer-toggle-btn active" type="button">소음 영향</button>
+            <button id="btn-environment-mode-ventilation" class="layer-toggle-btn" type="button">통풍 가능성</button>
+          </div>
+
+          <div id="environment-legend" class="building-legend"></div>
+
+          <div id="environment-sentences" class="boundary-list"></div>
+          <div id="environment-insights" class="boundary-list"></div>
+
+          <p id="environment-warnings" class="panel-hint" hidden></p>
+          <p class="panel-hint building-disclaimer">
+            ※ 소음은 실측 dB가 아니라 도로 규모·거리 기반 상대적 잠재 영향이며, 지하철역은
+            지상/지하 구분이 없어 실제 소음원 여부가 불확실합니다. 고속도로·대규모 교차로는
+            이번 단계에 포함하지 않았습니다. 통풍 가능성은 조망 분석(7.3단계)을 재사용한
+            2D 근사치이며 실제 주풍향이 아닙니다. 녹지·기상관측소·하천 데이터는 이번
+            단계에 포함하지 않았습니다.
+          </p>
+        </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 요청사항: "선택 필지" 칸을 "대상지 기본정보"와 같은 위젯에 넣지 말고 완전히
+         분리 — 별도의 떠 있는 카드(아래쪽 고정)로 뺐습니다. id·내부 구조는 그대로라
+         JS는 변경 없이 그대로 동작합니다. -->
+    <!-- "선택 대상지 요약 카드" — STEP1에서 하나 이상의 필지가 선택되면 뜹니다.
+         면적/필지수는 기존 refreshMergedSelection()이 이미 계산해 채우던 값을
+         그대로 재사용합니다(id 그대로 유지, 로직 변경 없음). -->
+    <aside id="multi-parcel-panel" class="multi-parcel-panel" hidden>
+      <div class="ch1-eyebrow">검토 대상지</div>
+      <div class="multi-parcel-header">
+        <span id="multi-parcel-count">선택 필지: 0개</span>
+      </div>
+
+      <div id="multi-parcel-disjoint-warning" class="search-status error" hidden>
+        ⚠ 서로 떨어진 필지가 포함되어 있습니다.
+      </div>
+
+      <dl class="multi-parcel-summary">
+        <dt>총 대지면적</dt>
+        <dd id="multi-parcel-total-area">-</dd>
+      </dl>
+
+      <ul id="multi-parcel-list" class="multi-parcel-list"></ul>
+
+      <!-- STEP1 → STEP2 전환 버튼. 기존 "사업성 및 사업내용 보기" 버튼(id 동일)을
+           개발검토 Workspace 진입 버튼으로 재활용했습니다(js/dev-workspace.js). -->
+      <button id="btn-show-feasibility" class="fs-open-btn" type="button" hidden>
+        개발가능성 분석
+      </button>
+    </aside>
+  </div>
+
+  <!-- Leaflet JS (CDN, 인터넷 연결 필요) -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- 이미지 내보내기용 (지도+오버레이를 PNG로 캡처, cdnjs 허용 도메인) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+  <!-- 공공기여 계산 프로필 표(사업유형별 건축물·현금 계수) — app.js보다 먼저 로드해
+       computeContributionFar()가 프로필 조회 함수를 바로 쓸 수 있게 합니다. -->
+  <script src="js/contribution-calc-profiles.js?v=1.0"></script>
+  <!-- GitHub Pages 화면 점검 URL에서만 정적 미리보기 상태를 표시합니다. -->
+  <script src="js/static-preview.js?v=1.0"></script>
+  <script src="js/app.js?v=10.44"></script>
+  <!-- STEP2 개발검토 Workspace — 화면 전환/탭 전환만 담당하는 얇은 오케스트레이션
+       레이어. app.js가 먼저 로드되어 있어야 하며(같은 전역 스코프를 공유하는
+       일반 스크립트), 실제 계산 로직(app.js의 기존 함수)은 그대로 재사용합니다. -->
+  <script src="js/dev-workspace.js?v=1.26"></script>
+  <!-- 8.11단계: 사업유형 검토 시스템(사업제도 규칙 묶음 카드 + OP 개발대안 관리).
+       dev-workspace.js 뒤에 로드 — 같은 전역 스코프를 공유하는 일반 스크립트라
+       selectedParcels/mergedParcelResult 등 app.js의 기존 상태를 그대로 재사용합니다. -->
+  <script src="js/business-type-review.js?v=1.23"></script>
+  <!-- UX 개편(2026-09-15): 개발가능성 요약 Dashboard. business-type-review.js 뒤에
+       로드 — 같은 전역 스코프를 공유하는 일반 스크립트라 fetchBusinessTypes()/
+       _analyzeBusinessType()/getZoningContextForSelection() 등을 새로 만들지 않고
+       그대로 재사용합니다. -->
+  <script src="js/dev-dashboard.js?v=1.19"></script>
+  <script src="js/business-rule-explorer.js?v=1.3"></script>
+</body>
+</html>
