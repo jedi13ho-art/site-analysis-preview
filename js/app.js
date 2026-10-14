@@ -1745,10 +1745,17 @@ async function refreshMergedSelection() {
 
   showParcelStatus("필지 병합 중...", "loading");
   try {
+    const browserConfig = await getVWorldBrowserConfig();
     const res = await fetch("/api/parcel-boundary/merge", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ geometries }),
+      body: JSON.stringify({
+        geometries,
+        // 공개 배포에서는 구역 bbox 조회가 이미 전체 후보를 확보했습니다. 작은 구멍을
+        // 찾으려고 Render 서버가 VWorld를 다시 호출하면 해외 회선 제한으로 병합이
+        // 오래 멈추므로, 이 환경에서는 순수 도형 병합만 수행합니다.
+        fill_holes: !(browserConfig.enabled && browserConfig.api_key),
+      }),
     });
     const body = await res.json().catch(() => ({}));
 
