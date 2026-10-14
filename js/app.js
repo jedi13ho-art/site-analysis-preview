@@ -9,7 +9,8 @@
  *
  * 2단계에서 추가한 것:
  * - 주소·지번 검색 UI (지도 위 오버레이 패널)
- * - 백엔드(/api/search)를 통한 VWorld 주소 검색 (프런트엔드는 VWorld를 직접 호출하지 않음)
+ * - 백엔드(/api/search)를 통한 VWorld 주소 검색
+ * - 해외 배포 서버의 VWorld 연결 실패 시 웹사이트 전용 키로 브라우저 직접 조회
  * - 검색 결과 선택 시: 지도 이동 + 임시 마커 표시 + 오른쪽 패널에 "검색된 위치" 정보 표시
  * - "분석 중심(analysisCenter)" 개념 도입: 필지를 클릭하든 검색 결과를 선택하든,
  *   가장 최근에 선택한 위치를 기준으로 반경 500m/1km 원이 그려집니다.
@@ -1083,6 +1084,116 @@ el.btnRadius1000.addEventListener("click", () => {
 /* 2단계: 주소 검색                                                      */
 /* ------------------------------------------------------------------ */
 
+let vworldBrowserConfigPromise = null;
+let vworldJsonpSequence = 0;
+
+async function getVWorldBrowserConfig() {
+  if (!vworldBrowserConfigPromise) {
+    vworldBrowserConfigPromise = fetch("/api/vworld-browser-config")
+      .then((res) => (res.ok ? res.json() : { enabled: false }))
+      .catch(() => ({ enabled: false }));
+  }
+  return vworldBrowserConfigPromise;
+}
+
+function fetchVWorldJsonp(baseUrl, params, signal) {
+  return new Promise((resolve, reject) => {
+    const callbackName = `__siteAnalysisVWorldJsonp${Date.now()}_${++vworldJsonpSequence}`;
+    const script = document.createElement("script");
+    const query = new URLSearchParams(params);
+    query.set("callback", callbackName);
+    let settled = false;
+
+    const cleanup = () => {
+      script.remove();
+      delete window[callbackName];
+      if (signal) signal.removeEventListener("abort", onAbort);
+      clearTimeout(timer);
+    };
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      fn(value);
+    };
+    const onAbort = () => finish(reject, new DOMException("요청이 취소되었습니다.", "AbortError"));
+
+    window[callbackName] = (payload) => finish(resolve, payload);
+    script.onerror = () => finish(reject, new Error("VWorld 브라우저 직접 호출에 실패했습니다."));
+    const timer = setTimeout(
+      () => finish(reject, new Error("VWorld 브라우저 직접 호출 응답이 지연되고 있습니다.")),
+      15000
+    );
+    if (signal) {
+      if (signal.aborted) return onAbort();
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+    script.src = `${baseUrl}?${query.toString()}`;
+    document.head.appendChild(script);
+  });
+}
+
+function extractVWorldItems(raw) {
+  const response = raw && raw.response;
+  if (!response || response.status === "NOT_FOUND") return [];
+  if (response.status === "ERROR") {
+    throw new Error("VWorld 주소 검색 응답에 오류가 있습니다.");
+  }
+  const items = response.result && response.result.items;
+  if (!items) return [];
+  return Array.isArray(items) ? items : [items];
+}
+
+function normalizeVWorldSearchItem(item, category) {
+  const address = (item && item.address) || {};
+  const roadAddress = address.road || address.roadAddr || null;
+  const parcelAddress = address.parcel || address.parcelAddr || null;
+  if (![roadAddress, parcelAddress].some((value) =>
+    value && (value.trim().startsWith("서울특별시") || value.trim().startsWith("서울시")))) {
+    return null;
+  }
+  const longitude = Number(item && item.point && item.point.x);
+  const latitude = Number(item && item.point && item.point.y);
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return null;
+  const rawId = item && item.id != null ? String(item.id) : "";
+  const pnu = /^11\d{17}$/.test(rawId) ? rawId : null;
+  return {
+    id: rawId || `${category}-${longitude}-${latitude}`,
+    title: roadAddress || parcelAddress,
+    road_address: roadAddress,
+    parcel_address: parcelAddress,
+    address_type: category,
+    longitude,
+    latitude,
+    pnu,
+  };
+}
+
+async function searchVWorldFromBrowser(query) {
+  const config = await getVWorldBrowserConfig();
+  if (!config.enabled || !config.api_key) throw new Error("브라우저 직접 조회가 설정되지 않았습니다.");
+  const common = {
+    service: "search", request: "search", version: "2.0", format: "json",
+    type: "address", crs: "EPSG:4326", query, key: config.api_key,
+  };
+  if (config.domain) common.domain = config.domain;
+  const [roadRaw, parcelRaw] = await Promise.all([
+    fetchVWorldJsonp("https://api.vworld.kr/req/search", { ...common, category: "road" }),
+    fetchVWorldJsonp("https://api.vworld.kr/req/search", { ...common, category: "parcel" }),
+  ]);
+  const combined = [
+    ...extractVWorldItems(roadRaw).map((item) => normalizeVWorldSearchItem(item, "road")),
+    ...extractVWorldItems(parcelRaw).map((item) => normalizeVWorldSearchItem(item, "parcel")),
+  ].filter(Boolean);
+  const seen = new Set();
+  return combined.filter((item) => {
+    const key = `${item.latitude.toFixed(6)},${item.longitude.toFixed(6)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 10);
+}
+
 async function performSearch() {
   const query = el.searchInput.value.trim();
 
@@ -1096,15 +1207,20 @@ async function performSearch() {
 
   showSearchStatus("검색 중...", "loading");
   el.searchButton.disabled = true;
+  let browserFallbackAttempted = false;
 
   try {
     const res = await fetch(`/api/search?query=${encodeURIComponent(query)}`);
     const body = await res.json();
 
     if (!res.ok) {
-      const message = (body && body.detail) || "검색 중 오류가 발생했습니다.";
-      showSearchStatus(message, "error");
-      return;
+      if (![502, 504].includes(res.status)) {
+        const message = (body && body.detail) || "검색 중 오류가 발생했습니다.";
+        showSearchStatus(message, "error");
+        return;
+      }
+      browserFallbackAttempted = true;
+      body.results = await searchVWorldFromBrowser(query);
     }
 
     if (!body.results || body.results.length === 0) {
@@ -1116,10 +1232,22 @@ async function performSearch() {
     renderSearchResults(body.results);
   } catch (err) {
     console.error(err);
-    showSearchStatus(
-      "네트워크 오류로 검색에 실패했습니다. 인터넷 연결과 서버 상태를 확인해주세요.",
-      "error"
-    );
+    try {
+      if (browserFallbackAttempted) throw err;
+      browserFallbackAttempted = true;
+      const results = await searchVWorldFromBrowser(query);
+      if (!results.length) showSearchStatus("검색 결과가 없습니다.", "empty");
+      else {
+        hideSearchStatus();
+        renderSearchResults(results);
+      }
+    } catch (fallbackError) {
+      console.error(fallbackError);
+      showSearchStatus(
+        "네트워크 오류로 검색에 실패했습니다. 인터넷 연결과 서버 상태를 확인해주세요.",
+        "error"
+      );
+    }
   } finally {
     el.searchButton.disabled = false;
   }
@@ -1365,8 +1493,18 @@ async function fetchParcelBoundary({ pnu, longitude, latitude }, signal) {
     params.set("latitude", latitude);
   }
 
-  const res = await fetch(`/api/parcel-boundary?${params.toString()}`, { signal });
+  let res;
+  try {
+    res = await fetch(`/api/parcel-boundary?${params.toString()}`, { signal });
+  } catch (error) {
+    if (error && error.name === "AbortError") throw error;
+    return fetchParcelBoundaryFromBrowser({ pnu, longitude, latitude }, signal);
+  }
   const body = await res.json().catch(() => ({}));
+
+  if (!res.ok && [502, 504].includes(res.status)) {
+    return fetchParcelBoundaryFromBrowser({ pnu, longitude, latitude }, signal);
+  }
 
   if (!res.ok) {
     const error = new Error(body.detail || "필지 조회 중 오류가 발생했습니다.");
@@ -1376,6 +1514,55 @@ async function fetchParcelBoundary({ pnu, longitude, latitude }, signal) {
   }
 
   return body; // { status: "success", parcel: {...} }
+}
+
+function extractVWorldFeatures(raw) {
+  const response = raw && raw.response;
+  if (!response || response.status === "NOT_FOUND") return [];
+  if (response.status === "ERROR") throw new Error("VWorld 필지 응답에 오류가 있습니다.");
+  const collection = response.result && response.result.featureCollection;
+  return collection && Array.isArray(collection.features) ? collection.features : [];
+}
+
+async function fetchParcelBoundaryFromBrowser({ pnu, longitude, latitude }, signal) {
+  const config = await getVWorldBrowserConfig();
+  if (!config.enabled || !config.api_key) throw new Error("브라우저 직접 조회가 설정되지 않았습니다.");
+  const params = {
+    service: "data", request: "GetFeature", format: "json", geometry: "true",
+    attribute: "true", crs: "EPSG:4326", key: config.api_key,
+    data: config.parcel_dataset || "LP_PA_CBND_BUBUN", page: "1", size: "20",
+  };
+  if (config.domain) params.domain = config.domain;
+  if (pnu) params.attrFilter = `pnu:=:${pnu}`;
+  else params.geomFilter = `POINT(${longitude} ${latitude})`;
+
+  const raw = await fetchVWorldJsonp("https://api.vworld.kr/req/data", params, signal);
+  const features = extractVWorldFeatures(raw);
+  if (!features.length) {
+    const error = new Error("해당 조건에 맞는 필지를 찾을 수 없습니다.");
+    error.status = 404;
+    error.detail = error.message;
+    throw error;
+  }
+
+  const normalizeRes = await fetch("/api/parcel-boundary/from-vworld-browser", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      features,
+      longitude: pnu ? null : longitude,
+      latitude: pnu ? null : latitude,
+    }),
+    signal,
+  });
+  const body = await normalizeRes.json().catch(() => ({}));
+  if (!normalizeRes.ok) {
+    const error = new Error(body.detail || "필지 조회 중 오류가 발생했습니다.");
+    error.status = normalizeRes.status;
+    error.detail = body.detail;
+    throw error;
+  }
+  return body;
 }
 
 /**
