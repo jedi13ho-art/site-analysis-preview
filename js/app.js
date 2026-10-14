@@ -1194,6 +1194,68 @@ async function searchVWorldFromBrowser(query) {
   }).slice(0, 10);
 }
 
+function extractVWorldFeatures(raw) {
+  const response = raw && raw.response;
+  if (!response || response.status === "NOT_FOUND") return [];
+  if (response.status === "ERROR") {
+    const message = response.error && (response.error.text || response.error.message);
+    throw new Error(message || "VWorld 필지 조회 응답에 오류가 있습니다.");
+  }
+  const collection = response.result && response.result.featureCollection;
+  const features = collection && collection.features;
+  if (!features) return [];
+  return Array.isArray(features) ? features : [features];
+}
+
+async function fetchVWorldParcelFeaturesByBox(minLon, minLat, maxLon, maxLat, signal) {
+  const config = await getVWorldBrowserConfig();
+  if (!config.enabled || !config.api_key) throw new Error("브라우저 직접 조회가 설정되지 않았습니다.");
+  const params = {
+    service: "data",
+    request: "GetFeature",
+    version: "2.0",
+    format: "json",
+    geometry: "true",
+    attribute: "true",
+    crs: "EPSG:4326",
+    data: config.parcel_dataset || "LP_PA_CBND_BUBUN",
+    geomFilter: `BOX(${minLon},${minLat},${maxLon},${maxLat})`,
+    page: "1",
+    size: "1000",
+    key: config.api_key,
+  };
+  if (config.domain) params.domain = config.domain;
+  const raw = await fetchVWorldJsonp("https://api.vworld.kr/req/data", params, signal);
+  return extractVWorldFeatures(raw);
+}
+
+async function normalizeBrowserAreaFeatures(geometry, features, signal) {
+  const res = await fetch("/api/parcel-boundary/by-area/from-vworld-browser", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ geometry, features }),
+    signal,
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || body.status !== "success") {
+    throw new Error(body.detail || (body.warnings && body.warnings[0]) || "구역 안 필지 정규화에 실패했습니다.");
+  }
+  return body;
+}
+
+async function normalizeBrowserBboxFeatures(features) {
+  const res = await fetch("/api/parcel-boundary/by-bbox/from-vworld-browser", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ features }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || body.status !== "success") {
+    throw new Error(body.detail || (body.warnings && body.warnings[0]) || "주변 필지 정규화에 실패했습니다.");
+  }
+  return body;
+}
+
 async function performSearch() {
   const query = el.searchInput.value.trim();
 
@@ -6040,37 +6102,48 @@ async function finishAreaSelect() {
   areaSelectAbortController = new AbortController();
 
   try {
-    const res = await fetch("/api/parcel-boundary/by-area", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ geometry: polygonGeoJson }),
-      signal: areaSelectAbortController.signal,
-    });
-    const body = await res.json().catch(() => ({}));
-
-    if (!res.ok || body.status !== "success") {
-      alert(body.detail || (body.warnings && body.warnings[0]) || "구역 안 필지 조회에 실패했습니다.");
-      endAreaSelectMode();
-      el.areaSelectHint.hidden = true;
-      return;
+    const lats = areaSelectPoints.map((p) => p.lat);
+    const lons = areaSelectPoints.map((p) => p.lng);
+    const browserConfig = await getVWorldBrowserConfig();
+    let resolvedBody;
+    if (browserConfig.enabled && browserConfig.api_key) {
+      const features = await fetchVWorldParcelFeaturesByBox(
+        Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats),
+        areaSelectAbortController.signal
+      );
+      resolvedBody = await normalizeBrowserAreaFeatures(
+        polygonGeoJson, features, areaSelectAbortController.signal
+      );
+    } else {
+      const res = await fetch("/api/parcel-boundary/by-area", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ geometry: polygonGeoJson }),
+        signal: areaSelectAbortController.signal,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || body.status !== "success") {
+        throw new Error(body.detail || (body.warnings && body.warnings[0]) || "구역 안 필지 조회에 실패했습니다.");
+      }
+      resolvedBody = body;
     }
 
     // 요청사항: "구역 범위 안의 모든 필지가 잡히는" 동작 — 기존 선택을 지우지 않고
     // 그대로 더합니다(이미 선택돼 있던 필지와 합쳐짐).
-    body.parcels.forEach((parcel) => {
+    resolvedBody.parcels.forEach((parcel) => {
       selectedParcels.set(_parcelSelectionKey(parcel), parcel);
     });
     const drawnPoints = areaSelectPoints.slice(); // endAreaSelectMode가 비우기 전에 복사
     endAreaSelectMode();
     enterAreaReviewMode(drawnPoints);
 
-    if (body.warnings && body.warnings.length) {
-      console.warn("구역 필지 조회 경고:", body.warnings);
+    if (resolvedBody.warnings && resolvedBody.warnings.length) {
+      console.warn("구역 필지 조회 경고:", resolvedBody.warnings);
     }
   } catch (err) {
     if (err.name === "AbortError") return;
     console.error(err);
-    alert("네트워크 오류로 구역 안 필지 조회에 실패했습니다.");
+    alert(err.message || "네트워크 오류로 구역 안 필지 조회에 실패했습니다.");
     endAreaSelectMode();
     el.areaSelectHint.hidden = true;
   }
@@ -6131,14 +6204,22 @@ async function enterAreaReviewMode(polygonPoints) {
   });
 
   try {
-    const res = await fetch(`/api/parcel-boundary/by-bbox?${params.toString()}`);
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok || body.status !== "success") {
-      console.warn("주변 필지 격자 조회 실패:", body.detail || (body.warnings && body.warnings[0]));
-      renderAreaGrid([]);
+    const browserConfig = await getVWorldBrowserConfig();
+    let resolvedBody;
+    if (browserConfig.enabled && browserConfig.api_key) {
+      const features = await fetchVWorldParcelFeaturesByBox(
+        minLon - padLon, minLat - padLat, maxLon + padLon, maxLat + padLat
+      );
+      resolvedBody = await normalizeBrowserBboxFeatures(features);
     } else {
-      renderAreaGrid(body.parcels);
+      const res = await fetch(`/api/parcel-boundary/by-bbox?${params.toString()}`);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || body.status !== "success") {
+        throw new Error(body.detail || (body.warnings && body.warnings[0]) || "주변 필지 격자 조회 실패");
+      }
+      resolvedBody = body;
     }
+    renderAreaGrid(resolvedBody.parcels);
   } catch (err) {
     console.error(err);
     renderAreaGrid([]);
